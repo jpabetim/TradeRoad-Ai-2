@@ -55,31 +55,36 @@
     // Crear el objeto CONFIG si no existe
     window.CONFIG = window.CONFIG || {};
     
-    // Cargar api key directamente desde una variable de entorno (si existe)
-    const apiKey = "ENV_API_KEY_PLACEHOLDER";
+    // Esta constante será reemplazada por el script de build (scripts/generate-config.js)
+    const injectedApiKey = "ENV_API_KEY_PLACEHOLDER";
     
-    // Si tenemos una API key real (no el placeholder), usámosla
-    if (apiKey && apiKey !== "ENV_API_KEY_PLACEHOLDER") {
-      window.CONFIG.API_KEY = apiKey;
-      console.log("API Key cargada desde envío directo en el HTML");
+    console.log(`Valor de injectedApiKey en index.html (pre-procesamiento): '${injectedApiKey}'`);
+
+    if (injectedApiKey && injectedApiKey !== "ENV_API_KEY_PLACEHOLDER" && injectedApiKey !== "NO_API_KEY_FOUND_FROM_ENV_VARS") {
+      window.CONFIG.API_KEY = injectedApiKey;
+      console.log(`✅ API Key configurada en window.CONFIG.API_KEY desde index.html (longitud: ${injectedApiKey.length})`);
+    } else if (injectedApiKey === "NO_API_KEY_FOUND_FROM_ENV_VARS") {
+      console.warn('🔴 API Key NO ENCONTRADA por el script de build en las variables de entorno de Render.');
+      window.CONFIG.API_KEY = ''; // Aseguramos que sea una cadena vacía
+    } else if (injectedApiKey === "ENV_API_KEY_PLACEHOLDER") {
+      console.error('❌ ERROR CRÍTICO: El placeholder de API Key no fue reemplazado por el script de build. Verifica la ejecución de generate-config.js.');
+      window.CONFIG.API_KEY = ''; // Aseguramos que sea una cadena vacía
+    } else {
+      console.warn('⚠️ API Key tiene un valor inesperado o vacío después de la inyección. Valor:', injectedApiKey);
+      window.CONFIG.API_KEY = ''; // Aseguramos que sea una cadena vacía
     }
     
     window.process = {
       env: {
-        // Usamos la API_KEY del objeto CONFIG generado durante el build
-        API_KEY: window.CONFIG.API_KEY || 
-                window.API_KEY || 
-                window.VITE_API_KEY || 
-                window.REACT_APP_API_KEY || 
-                "" // Si nada funciona, usaremos una cadena vacía
+        API_KEY: window.CONFIG.API_KEY || ""
       }
     };
     
-    // Log para debugging (solo se muestra si la API key no está configurada)
-    if (!window.process.env.API_KEY) {
-      console.warn('⚠️ API Key no configurada. Por favor configura la variable de entorno API_KEY en Render.');
+    // Log final sobre el estado de la API key para la aplicación
+    if (window.process.env.API_KEY && window.process.env.API_KEY.length > 10) { // Asumimos que una key válida tiene más de 10 caracteres
+      console.log('✅ API Key disponible para la aplicación en window.process.env.API_KEY.');
     } else {
-      console.log('✅ API Key configurada correctamente.');
+      console.warn('⚠️ API Key NO disponible o inválida para la aplicación en window.process.env.API_KEY. El análisis de IA estará deshabilitado.');
     }
   </script>
   <script type="module" src="/index.tsx"></script>

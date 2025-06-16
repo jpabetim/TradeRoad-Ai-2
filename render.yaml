@@ -6,25 +6,16 @@ services:
       # Instalar dependencias
       npm install
       
-      # Crear directorio public si no existe
-      mkdir -p ./public
-      
-      # Generar archivo config.js
+      # Ejecutar script para inyectar API key en index.html
       node ./scripts/generate-config.js
       
-      # Mostrar el contenido del config.js generado
-      echo "Contenido de config.js generado:"
-      cat ./public/config.js
+      # Mostrar las líneas relevantes de index.html DESPUÉS de la inyección de la API key
+      echo "Mostrando sección de script de API Key en index.html DESPUÉS de la inyección:"
+      grep -C 15 'const injectedApiKey' index.html
+      echo "-----------------------------------------------------------------"
       
-      # Construir la aplicación
+      # Construir la aplicación (Vite se encargará de procesar el index.html modificado)
       npm run build
-      
-      # Copiar config.js a dist
-      cp -f ./public/config.js ./dist/config.js
-      
-      # Verificar que el archivo se haya copiado correctamente
-      echo "Verificando config.js en dist:"
-      cat ./dist/config.js
       
       # Listar archivos en dist para asegurarse de que todo está correcto
       echo "Contenido del directorio dist:"

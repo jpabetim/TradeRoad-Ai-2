@@ -3,32 +3,34 @@ const fs = require('fs');
 const path = require('path');
 
 // Buscar la API key en múltiples variables de entorno posibles
-const apiKey = process.env.API_KEY || 
-              process.env.GEMINI_API_KEY || 
-              process.env.VITE_API_KEY || 
-              process.env.REACT_APP_API_KEY || 
-              '';
+const envApiKey = process.env.API_KEY || 
+                 process.env.GEMINI_API_KEY || 
+                 process.env.VITE_API_KEY || 
+                 process.env.REACT_APP_API_KEY;
 
-console.log('Variables de entorno disponibles:');
-console.log('API_KEY:', process.env.API_KEY ? `presente (${process.env.API_KEY.length} caracteres)` : 'no disponible');
-console.log('GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? `presente (${process.env.GEMINI_API_KEY.length} caracteres)` : 'no disponible');
-console.log('VITE_API_KEY:', process.env.VITE_API_KEY ? `presente (${process.env.VITE_API_KEY.length} caracteres)` : 'no disponible');
-console.log('REACT_APP_API_KEY:', process.env.REACT_APP_API_KEY ? `presente (${process.env.REACT_APP_API_KEY.length} caracteres)` : 'no disponible');
-console.log(`API key final seleccionada: ${apiKey ? `presente (${apiKey.length} caracteres)` : 'NINGUNA - ESTO CAUSARÁ PROBLEMAS'}`);
+console.log('Variables de entorno disponibles para el script de build:');
+console.log('  process.env.API_KEY:', process.env.API_KEY ? `presente (longitud: ${process.env.API_KEY.length})` : 'no disponible');
+console.log('  process.env.GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? `presente (longitud: ${process.env.GEMINI_API_KEY.length})` : 'no disponible');
+console.log('  process.env.VITE_API_KEY:', process.env.VITE_API_KEY ? `presente (longitud: ${process.env.VITE_API_KEY.length})` : 'no disponible');
+console.log('  process.env.REACT_APP_API_KEY:', process.env.REACT_APP_API_KEY ? `presente (longitud: ${process.env.REACT_APP_API_KEY.length})` : 'no disponible');
 
-// CAMBIO IMPORTANTE: En lugar de generar config.js, vamos a inyectar la API key directamente en el HTML
+const apiKeyToInject = envApiKey && envApiKey.trim() !== '' ? envApiKey : 'NO_API_KEY_FOUND_FROM_ENV_VARS';
+
+console.log(`API key que se intentará inyectar en index.html: ${apiKeyToInject} (longitud: ${apiKeyToInject.length})`);
+
+// Inyectar la API key directamente en el HTML
 const indexHtmlPath = path.resolve(process.cwd(), 'index.html');
 let indexHtmlContent = fs.readFileSync(indexHtmlPath, 'utf8');
 
-// Reemplazar el placeholder en el HTML con la API key real
+// Reemplazar el placeholder en el HTML con la API key real o el indicador de no encontrada
 indexHtmlContent = indexHtmlContent.replace(
   'const apiKey = "ENV_API_KEY_PLACEHOLDER";',
-  `const apiKey = "${apiKey}";`
+  `const apiKey = "${apiKeyToInject}";`
 );
 
 // Guardar el HTML modificado
 fs.writeFileSync(indexHtmlPath, indexHtmlContent);
-console.log(`API key inyectada directamente en index.html (${apiKey ? apiKey.length : 0} caracteres)`);
+console.log(`Contenido de apiKey reemplazado en index.html. Nueva longitud de apiKey string: ${apiKeyToInject.length}`);
 
 // Para compatibilidad hacia atrás, seguimos generando config.js en caso de que algún código lo intente cargar
 
