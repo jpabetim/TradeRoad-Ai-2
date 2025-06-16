@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Wyckoff/SMC AI Trading Analyst</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
   <style>
     body {
       font-family: 'Inter', sans-serif; /* A nice sans-serif font */
@@ -46,7 +46,7 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+<link rel="stylesheet" href="/public/index.css">
 </head>
 <body class="bg-slate-900 text-slate-100">
   <div id="root"></div>
@@ -55,11 +55,22 @@
     // WARNING: Do NOT deploy this to a public server with your key embedded.
     // Replace "TU_CLAVE_API_DE_GEMINI_AQUI" with your actual Google Gemini API Key.
     // If this key is not set correctly, AI analysis features will not work.
+    // Intentar obtener la API Key como variable global establecida por Render
+    // o desde una variable de entorno inyectada durante el build
     window.process = {
       env: {
-        API_KEY: "TU_CLAVE_API_DE_GEMINI_AQUI" // <-- IMPORTANT: REPLACE THIS VALUE!
+        // Comprobamos múltiples fuentes posibles para la API key
+        API_KEY: window.API_KEY || 
+                window.VITE_API_KEY || 
+                window.REACT_APP_API_KEY || 
+                (typeof process !== 'undefined' && process.env && process.env.API_KEY) || 
+                "" // Si nada funciona, usaremos una cadena vacía
       }
     };
+    // Log para debugging (solo se muestra si la API key no está configurada)
+    if (!window.process.env.API_KEY) {
+      console.warn('⚠️ API Key no configurada. Por favor configura la variable de entorno API_KEY en Render.');
+    }
   </script>
   <script type="module" src="/index.tsx"></script>
 </body>
