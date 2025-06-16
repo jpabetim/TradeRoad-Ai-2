@@ -2,7 +2,33 @@ services:
   - type: web
     name: traderoad-ai
     env: static
-    buildCommand: npm install && mkdir -p ./public && node ./scripts/generate-config.js && npm run build && cp -f ./public/config.js ./dist/config.js
+    buildCommand: |
+      # Instalar dependencias
+      npm install
+      
+      # Crear directorio public si no existe
+      mkdir -p ./public
+      
+      # Generar archivo config.js
+      node ./scripts/generate-config.js
+      
+      # Mostrar el contenido del config.js generado
+      echo "Contenido de config.js generado:"
+      cat ./public/config.js
+      
+      # Construir la aplicación
+      npm run build
+      
+      # Copiar config.js a dist
+      cp -f ./public/config.js ./dist/config.js
+      
+      # Verificar que el archivo se haya copiado correctamente
+      echo "Verificando config.js en dist:"
+      cat ./dist/config.js
+      
+      # Listar archivos en dist para asegurarse de que todo está correcto
+      echo "Contenido del directorio dist:"
+      ls -la ./dist
     staticPublishPath: ./dist
     pullRequestPreviewsEnabled: true
     headers:
