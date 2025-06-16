@@ -3,6 +3,90 @@ import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { GeminiAnalysisResult, GeminiRequestPayload } from "../types";
 import { GEMINI_MODEL_NAME, getFullAnalysisPrompt } from "../constants";
 
+// Función auxiliar para obtener la API key de múltiples fuentes posibles
+const getApiKey = (): string => {
+  // Lugares donde podemos encontrar la API key en el navegador
+  const possibleSources = [
+    // Objeto CONFIG global
+    window.CONFIG?.API_KEY,
+    // Variables de window directas
+    window.API_KEY,
+    window.GEMINI_API_KEY,
+    window.VITE_API_KEY,
+    window.REACT_APP_API_KEY,
+    // Variables de process.env (a través de Vite o React)
+    window.process?.env?.API_KEY,
+    window.process?.env?.GEMINI_API_KEY,
+    window.process?.env?.VITE_API_KEY,
+    window.process?.env?.REACT_APP_API_KEY,
+    // Como último recurso, buscar en localStorage
+    localStorage.getItem('API_KEY'),
+    localStorage.getItem('GEMINI_API_KEY')
+  ];
+  
+  // Log de debug para todas las fuentes
+  console.log('Fuentes de API key disponibles:', {
+    'window.CONFIG?.API_KEY': window.CONFIG?.API_KEY || '(no disponible)',
+    'window.API_KEY': window.API_KEY || '(no disponible)',
+    'window.GEMINI_API_KEY': window.GEMINI_API_KEY || '(no disponible)',
+    'window.VITE_API_KEY': window.VITE_API_KEY || '(no disponible)',
+    'window.REACT_APP_API_KEY': window.REACT_APP_API_KEY || '(no disponible)',
+    'process.env.API_KEY': window.process?.env?.API_KEY || '(no disponible)',
+    'process.env.GEMINI_API_KEY': window.process?.env?.GEMINI_API_KEY || '(no disponible)',
+    'localStorage API_KEY': localStorage.getItem('API_KEY') || '(no disponible)',
+  });
+  
+  // Encontrar la primera API key válida
+  for (const source of possibleSources) {
+    if (source && typeof source === 'string' && source.length > 10) {
+      // Es muy probable que sea una API key válida de Gemini si tiene más de 10 caracteres
+      if (!isPlaceholder(source)) {
+        console.log('API key válida encontrada, longitud:', source.length);
+        return source;
+      }
+    }
+  }
+  
+  // Si llegamos aquí, no encontramos ninguna API key válida
+  console.error('No se encontró ninguna API key válida en ninguna fuente');
+  return '';
+};
+
+// Verificar si una API key es un placeholder
+const isPlaceholder = (key: string): boolean => {
+  const placeholders = [
+    'API_KEY_PLACEHOLDER',
+    'TU_CLAVE_API_DE_GEMINI_AQUI',
+    'YOUR_API_KEY_HERE',
+    'GEMINI_API_KEY'
+  ];
+  
+  // Verificar si la API key es uno de los placeholders conocidos
+  if (placeholders.some(placeholder => key.includes(placeholder))) {
+    return true;
+  }
+  
+  // Verificar si la API key parece un placeholder por su patrón
+  // Esto es útil para detectar cosas como "YOUR_API_KEY", "[[API_KEY]]", etc.
+  const placeholderPattern = /\[|\]|YOUR|TU|CLAVE|KEY|PLACEHOLDER|AQUI|HERE/i;
+  if (placeholderPattern.test(key)) {
+    return true;
+  }
+  
+  return false;
+};
+
+// Extender propiedades de window sin redeclarar process
+declare global {
+  interface Window {
+    CONFIG?: { API_KEY?: string, BUILD_TIME?: string };
+    API_KEY?: string;
+    GEMINI_API_KEY?: string;
+    VITE_API_KEY?: string;
+    REACT_APP_API_KEY?: string;
+  }
+}
+
 // getApiKey function is removed as apiKey will be passed directly.
 
 export interface ExtendedGeminiRequestPayload extends GeminiRequestPayload {
@@ -36,13 +120,24 @@ const sanitizeJsonString = (jsonStr: string): string => {
 export const analyzeChartWithGemini = async (
   payload: ExtendedGeminiRequestPayload
 ): Promise<GeminiAnalysisResult> => {
-  const { apiKey, ...restOfPayload } = payload; // Extract apiKey from payload
+  // Extraer apiKey del payload, pero también buscarla con getApiKey si no existe o es inválida
+  const { apiKey: providedApiKey, ...restOfPayload } = payload;
+  
+  // Intentar usar la API key proporcionada en el payload, o buscar una válida con getApiKey
+  // Esto nos da máxima flexibilidad: funcionará si la key está en el payload o en cualquiera de las otras ubicaciones
+  let apiKey = providedApiKey;
+  
+  // Si la API key proporcionada no es válida, intentar encontrar una con getApiKey
+  if (!apiKey || isPlaceholder(apiKey)) {
+    console.log('API key en payload no válida, buscando en otras fuentes...');
+    apiKey = getApiKey();
+  }
 
   console.log(`Intento de uso de API key: ${apiKey ? `presente (longitud: ${apiKey.length})` : 'no disponible'}`);
   
-  if (!apiKey || apiKey === "TU_CLAVE_API_DE_GEMINI_AQUI" || apiKey === "API_KEY_PLACEHOLDER") {
-    console.error("API_KEY is not configured or is a placeholder. It was passed to analyzeChartWithGemini.");
-    throw new Error("API Key is not configured or is a placeholder. AI analysis disabled.");
+  if (!apiKey || apiKey.length < 10) {
+    console.error("API_KEY no se encontró en ninguna ubicación conocida o no es válida.");
+    throw new Error("API Key no configurada. Análisis de IA deshabilitado.");
   }
 
   const ai = new GoogleGenAI({ apiKey }); // Use the apiKey from payload
