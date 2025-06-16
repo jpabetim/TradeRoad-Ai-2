@@ -50,26 +50,30 @@
 </head>
 <body class="bg-slate-900 text-slate-100">
   <div id="root"></div>
+  <!-- El archivo config.js será generado durante el proceso de build -->
+  <script src="/config.js"></script>
   <script>
-    // FOR LOCAL DEVELOPMENT ONLY: Set your Gemini API Key here.
-    // WARNING: Do NOT deploy this to a public server with your key embedded.
-    // Replace "TU_CLAVE_API_DE_GEMINI_AQUI" with your actual Google Gemini API Key.
-    // If this key is not set correctly, AI analysis features will not work.
-    // Intentar obtener la API Key como variable global establecida por Render
-    // o desde una variable de entorno inyectada durante el build
+    // Si no existe window.CONFIG, creamos un objeto vacío
+    if (!window.CONFIG) {
+      window.CONFIG = {};
+    }
+    
     window.process = {
       env: {
-        // Comprobamos múltiples fuentes posibles para la API key
-        API_KEY: window.API_KEY || 
+        // Usamos la API_KEY del objeto CONFIG generado durante el build
+        API_KEY: window.CONFIG.API_KEY || 
+                window.API_KEY || 
                 window.VITE_API_KEY || 
                 window.REACT_APP_API_KEY || 
-                (typeof process !== 'undefined' && process.env && process.env.API_KEY) || 
                 "" // Si nada funciona, usaremos una cadena vacía
       }
     };
+    
     // Log para debugging (solo se muestra si la API key no está configurada)
     if (!window.process.env.API_KEY) {
       console.warn('⚠️ API Key no configurada. Por favor configura la variable de entorno API_KEY en Render.');
+    } else {
+      console.log('✅ API Key configurada correctamente.');
     }
   </script>
   <script type="module" src="/index.tsx"></script>

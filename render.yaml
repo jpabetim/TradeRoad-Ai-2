@@ -2,7 +2,11 @@ services:
   - type: web
     name: traderoad-ai
     env: static
-    buildCommand: npm install && npm run build
+    buildCommand: |
+      npm install && \
+      npm run build && \
+      mkdir -p ./dist && \
+      node ./scripts/generate-config.js
     staticPublishPath: ./dist
     pullRequestPreviewsEnabled: true
     headers:
@@ -16,3 +20,5 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 18.15.0
+      - key: API_KEY
+        sync: true # Necesitamos que esté disponible durante el build
