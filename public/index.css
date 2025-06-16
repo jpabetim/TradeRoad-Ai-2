@@ -7,7 +7,9 @@ body {
 
 /* Asegurarse de que los botones y controles tengan texto visible */
 button, select, input, .btn, [role="button"], .timeframe-btn, .select-btn {
-  color: #1a202c !important; /* Texto oscuro para asegurar visibilidad */
+  color: #f8fafc !important; /* Texto claro para fondos oscuros */
+  background-color: rgba(30, 41, 59, 0.7) !important; /* Fondo ligeramente visible */
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
 }
 
 /* Para botones en fondos oscuros, usar texto claro */
@@ -45,13 +47,30 @@ button, select, input, .btn, [role="button"], .timeframe-btn, .select-btn {
 .timeframe-selector button,
 .data-source-selector button,
 .trading-pair-selector button,
-.display-settings button {
-  color: #1a202c !important;
-  border: 1px solid rgba(203, 213, 225, 0.4);
-  background-color: rgba(248, 250, 252, 0.1);
-  padding: 0.25rem 0.75rem;
-  border-radius: 0.25rem;
-  transition: all 0.2s;
+.display-settings button,
+/* Selectores específicos por tipo de botón */
+button[class*="time"],   /* Botones de timeframe */
+button[class*="tf-"],    /* Botones de timeframe alternativos */
+button.ma,               /* Botones de Moving Average */
+button.ema,              /* Botones de EMA */
+button.vma,              /* Botones de VMA */
+button.rsi,              /* Botones de RSI */
+button.macd,             /* Botones de MACD */
+button.bollinger,        /* Botones de Bollinger */
+button.stochastic,       /* Botones de Stochastic */
+button[class*="indicator"],  /* Botones de indicadores */
+button[class*="setting"],    /* Botones de configuración */
+button[class*="control"],    /* Botones de control */
+button.active,           /* Botones activos */
+button.inactive          /* Botones inactivos */ {
+  color: #f8fafc !important;
+  border: 1px solid rgba(203, 213, 225, 0.4) !important;
+  background-color: rgba(37, 99, 235, 0.3) !important;
+  padding: 0.25rem 0.75rem !important;
+  border-radius: 0.25rem !important;
+  transition: all 0.2s !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important; /* Añadir sombra para mejorar legibilidad */
+  opacity: 0.9 !important; /* Asegurar que no estén demasiado transparentes */
 }
 
 .market-controls-btn:hover,
