@@ -1,4 +1,4 @@
-// Script para generar el archivo config.js durante el proceso de build
+// Script para inyectar la API key directamente en el HTML durante el proceso de build
 const fs = require('fs');
 const path = require('path');
 
@@ -15,6 +15,22 @@ console.log('GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? `presente (${process
 console.log('VITE_API_KEY:', process.env.VITE_API_KEY ? `presente (${process.env.VITE_API_KEY.length} caracteres)` : 'no disponible');
 console.log('REACT_APP_API_KEY:', process.env.REACT_APP_API_KEY ? `presente (${process.env.REACT_APP_API_KEY.length} caracteres)` : 'no disponible');
 console.log(`API key final seleccionada: ${apiKey ? `presente (${apiKey.length} caracteres)` : 'NINGUNA - ESTO CAUSARÁ PROBLEMAS'}`);
+
+// CAMBIO IMPORTANTE: En lugar de generar config.js, vamos a inyectar la API key directamente en el HTML
+const indexHtmlPath = path.resolve(process.cwd(), 'index.html');
+let indexHtmlContent = fs.readFileSync(indexHtmlPath, 'utf8');
+
+// Reemplazar el placeholder en el HTML con la API key real
+indexHtmlContent = indexHtmlContent.replace(
+  'const apiKey = "ENV_API_KEY_PLACEHOLDER";',
+  `const apiKey = "${apiKey}";`
+);
+
+// Guardar el HTML modificado
+fs.writeFileSync(indexHtmlPath, indexHtmlContent);
+console.log(`API key inyectada directamente en index.html (${apiKey ? apiKey.length : 0} caracteres)`);
+
+// Para compatibilidad hacia atrás, seguimos generando config.js en caso de que algún código lo intente cargar
 
 // Obtener el timestamp actual para el build
 const buildTime = new Date().toISOString();

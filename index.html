@@ -50,12 +50,18 @@
 </head>
 <body class="bg-slate-900 text-slate-100">
   <div id="root"></div>
-  <!-- El archivo config.js será generado durante el proceso de build -->
-  <script type="text/javascript" src="/config.js"></script>
+  <!-- Scripts para configuración de API Key -->
   <script>
-    // Si no existe window.CONFIG, creamos un objeto vacío
-    if (!window.CONFIG) {
-      window.CONFIG = {};
+    // Crear el objeto CONFIG si no existe
+    window.CONFIG = window.CONFIG || {};
+    
+    // Cargar api key directamente desde una variable de entorno (si existe)
+    const apiKey = "ENV_API_KEY_PLACEHOLDER";
+    
+    // Si tenemos una API key real (no el placeholder), usámosla
+    if (apiKey && apiKey !== "ENV_API_KEY_PLACEHOLDER") {
+      window.CONFIG.API_KEY = apiKey;
+      console.log("API Key cargada desde envío directo en el HTML");
     }
     
     window.process = {
