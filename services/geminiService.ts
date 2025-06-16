@@ -38,7 +38,9 @@ export const analyzeChartWithGemini = async (
 ): Promise<GeminiAnalysisResult> => {
   const { apiKey, ...restOfPayload } = payload; // Extract apiKey from payload
 
-  if (!apiKey || apiKey === "TU_CLAVE_API_DE_GEMINI_AQUI") {
+  console.log(`Intento de uso de API key: ${apiKey ? `presente (longitud: ${apiKey.length})` : 'no disponible'}`);
+  
+  if (!apiKey || apiKey === "TU_CLAVE_API_DE_GEMINI_AQUI" || apiKey === "API_KEY_PLACEHOLDER") {
     console.error("API_KEY is not configured or is a placeholder. It was passed to analyzeChartWithGemini.");
     throw new Error("API Key is not configured or is a placeholder. AI analysis disabled.");
   }
@@ -65,7 +67,8 @@ export const analyzeChartWithGemini = async (
       },
     });
 
-    let jsonStr = genAIResponse.text.trim();
+    // Comprobación para evitar el error de 'genAIResponse.text' posiblemente 'undefined'
+    let jsonStr = genAIResponse && genAIResponse.text ? genAIResponse.text.trim() : '';
     const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
     const match = jsonStr.match(fenceRegex);
     if (match && match[2]) { 

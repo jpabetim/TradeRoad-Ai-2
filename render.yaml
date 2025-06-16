@@ -35,4 +35,10 @@ services:
       - key: NODE_VERSION
         value: 18.15.0
       - key: API_KEY
-        sync: true # Necesitamos que esté disponible durante el build
+        sync: true # La variable que estamos usando actualmente
+      - key: VITE_API_KEY
+        sync: true # Alternativa para Vite
+      - key: GEMINI_API_KEY
+        sync: true # Nombre alternativo que podría estar usando la app
+      - key: REACT_APP_API_KEY
+        sync: true # Nombre alternativo para React

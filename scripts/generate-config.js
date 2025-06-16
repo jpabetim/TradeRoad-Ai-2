@@ -2,8 +2,19 @@
 const fs = require('fs');
 const path = require('path');
 
-// Obtener la API key desde las variables de entorno
-const apiKey = process.env.API_KEY || '';
+// Buscar la API key en múltiples variables de entorno posibles
+const apiKey = process.env.API_KEY || 
+              process.env.GEMINI_API_KEY || 
+              process.env.VITE_API_KEY || 
+              process.env.REACT_APP_API_KEY || 
+              '';
+
+console.log('Variables de entorno disponibles:');
+console.log('API_KEY:', process.env.API_KEY ? `presente (${process.env.API_KEY.length} caracteres)` : 'no disponible');
+console.log('GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? `presente (${process.env.GEMINI_API_KEY.length} caracteres)` : 'no disponible');
+console.log('VITE_API_KEY:', process.env.VITE_API_KEY ? `presente (${process.env.VITE_API_KEY.length} caracteres)` : 'no disponible');
+console.log('REACT_APP_API_KEY:', process.env.REACT_APP_API_KEY ? `presente (${process.env.REACT_APP_API_KEY.length} caracteres)` : 'no disponible');
+console.log(`API key final seleccionada: ${apiKey ? `presente (${apiKey.length} caracteres)` : 'NINGUNA - ESTO CAUSARÁ PROBLEMAS'}`);
 
 // Obtener el timestamp actual para el build
 const buildTime = new Date().toISOString();

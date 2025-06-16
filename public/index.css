@@ -5,6 +5,28 @@ body {
   padding: 0;
 }
 
+/* Asegurarse de que los botones y controles tengan texto visible */
+button, select, input, .btn, [role="button"], .timeframe-btn, .select-btn {
+  color: #1a202c !important; /* Texto oscuro para asegurar visibilidad */
+}
+
+/* Para botones en fondos oscuros, usar texto claro */
+.bg-slate-800 button, .bg-slate-900 button, 
+.bg-slate-800 select, .bg-slate-900 select,
+.bg-slate-800 .btn, .bg-slate-900 .btn,
+.dark button, .dark select, .dark input, .dark .btn {
+  color: #f8fafc !important; /* Texto claro para fondos oscuros */
+}
+
+/* Garantizar que el texto en los botones sea visible */
+.text-white {
+  color: #ffffff !important;
+}
+
+.text-black {
+  color: #000000 !important;
+}
+
 /* Custom utility classes that might be needed beyond Tailwind */
 .chart-container {
   width: 100%;
@@ -17,3 +39,41 @@ body {
 }
 
 /* Any additional custom styles that aren't handled by Tailwind */
+
+/* Estilos adicionales para mejorar la visibilidad en la interfaz */
+.market-controls-btn,
+.timeframe-selector button,
+.data-source-selector button,
+.trading-pair-selector button,
+.display-settings button {
+  color: #1a202c !important;
+  border: 1px solid rgba(203, 213, 225, 0.4);
+  background-color: rgba(248, 250, 252, 0.1);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
+  transition: all 0.2s;
+}
+
+.market-controls-btn:hover,
+.timeframe-selector button:hover,
+.data-source-selector button:hover,
+.trading-pair-selector button:hover,
+.display-settings button:hover {
+  background-color: rgba(248, 250, 252, 0.2);
+}
+
+/* Asegurar que los botones activos se distingan */
+.active-btn, button.active, .active {
+  background-color: rgba(14, 165, 233, 0.2) !important;
+  border-color: rgba(14, 165, 233, 0.5) !important;
+  color: #0ea5e9 !important;
+}
+
+/* Estilos para inputs */
+input, select {
+  color: #1a202c !important;
+  background-color: rgba(248, 250, 252, 0.1);
+  border: 1px solid rgba(203, 213, 225, 0.4);
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+}
