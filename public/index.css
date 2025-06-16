@@ -5,6 +5,24 @@ body {
   padding: 0;
 }
 
+/* Ajuste global para mejorar los colores de toda la interfaz contra fondos oscuros */
+body.bg-slate-900 button,
+body.bg-slate-900 select,
+body.bg-slate-900 input,
+body.bg-slate-900 .btn,
+body.bg-slate-900 .timeframe-btn,
+body.bg-slate-900 .select-btn,
+body.bg-slate-800 button,
+body.bg-slate-800 select,
+body.bg-slate-800 input,
+body.bg-slate-800 .btn,
+body.bg-slate-800 .timeframe-btn,
+body.bg-slate-800 .select-btn {
+  color: #f8fafc !important;
+  border-color: rgba(203, 213, 225, 0.4) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
+}
+
 /* Asegurarse de que los botones y controles tengan texto visible */
 button, select, input, .btn, [role="button"], .timeframe-btn, .select-btn {
   color: #f8fafc !important; /* Texto claro para fondos oscuros */
