@@ -102,57 +102,78 @@ const sanitizeJsonString = (jsonStr: string): string => {
   // Imprimir los primeros 50 caracteres para depuración
   console.log(`Primeros 50 caracteres antes de sanitizar: "${jsonStr.substring(0, 50)}"`);
   
-  let sanitized = jsonStr;
-  
-  // 1. Eliminar espacios en blanco, BOM y otros caracteres invisibles al inicio
-  sanitized = sanitized.trimStart();
-  
-  // 2. Asegurarse de que el JSON comienza con { o [
-  if (sanitized[0] !== '{' && sanitized[0] !== '[') {
-    console.log('El JSON no comienza con { o [, buscando el primer { válido');
-    const validStart = sanitized.indexOf('{');
-    if (validStart > 0) {
-      console.log(`Encontrado { en posición ${validStart}, recortando caracteres iniciales inválidos`);
-      sanitized = sanitized.substring(validStart);
+  // ESTRATEGIA SIMPLE PERO RADICAL: Utilizaremos un enfoque drástico pero efectivo
+  try {
+    // Intenta una estrategia radical: Normaliza completamente la cadena JSON 
+    // Usando JSON.parse y luego JSON.stringify para recrearlo limpio
+    
+    // 1. Eliminar espacios en blanco, BOM y otros caracteres invisibles al inicio
+    let preparada = jsonStr.trim();
+    
+    // 2. Manejar el problema de saltos de línea dentro del JSON de manera agresiva
+    // Primero, convertir la cadena a objeto usando eval para permitir caracteres no válidos
+    // NOTA: Normalmente eval es peligroso, pero aquí lo usamos en un contexto controlado para parsing
+    try {
+      console.log("Intento 1: Usando JSON.parse directo");
+      // Intento directo con JSON.parse (poco probable que funcione con los errores actuales)
+      const parsed = JSON.parse(preparada);
+      return JSON.stringify(parsed);
+    } catch (parseError) {
+      try {
+        console.log("Intento 2: Usando estrategia de normalización fuerte");
+        
+        // Reemplazar todos los saltos de línea con espacios
+        preparada = preparada.replace(/\n/g, ' ');
+        preparada = preparada.replace(/\r/g, ' ');
+        
+        // Eliminar todos los espacios en blanco entre caracteres que no son necesarios en JSON
+        preparada = preparada.replace(/\s+(?=[\{\}\[\]\,\:\"\'])/g, '');
+        
+        // Asegurar que el JSON comienza correctamente
+        if (!preparada.startsWith('{') && !preparada.startsWith('[')) {
+          const validStart = Math.max(preparada.indexOf('{'), preparada.indexOf('['));
+          if (validStart > 0) {
+            preparada = preparada.substring(validStart);
+          }
+        }
+        
+        // Intentar reparar comillas sin escapar
+        preparada = preparada.replace(/([^\\])"([^"]*?[^\\])"(?=[^:]*[\,\}])/g, '$1\\\'$2\\\'')
+        
+        // Log para depuración
+        console.log(`Cadena preparada para JSON.parse: "${preparada.substring(0, 50)}..."`);
+        
+        // Intento final con JSON.parse
+        const parsedObject = JSON.parse(preparada);
+        return JSON.stringify(parsedObject);
+      } catch (finalError) {
+        console.error("Todos los intentos de reparar el JSON fallaron:", finalError);
+        // Intento final desesperado: eliminar todos los saltos de línea y normalizar el JSON manualmente
+        // Si esto falla, no hay mucho más que podamos hacer automáticamente
+        
+        // Si llegamos aquí, intentamos devolver la cadena original para permitir
+        // que otros mecanismos de errores la manejen
+        console.warn("Devolviendo JSON sanitizado con método de respaldo");
+        
+        // Último intento - limpieza básica
+        let lastResort = jsonStr.trim();
+        // Reemplazar saltos de línea con nada
+        lastResort = lastResort.replace(/\n|\r/g, '');
+        // Eliminar espacios en blanco excesivos
+        lastResort = lastResort.replace(/\s+/g, ' ');
+        // Remover cualquier caracter Unicode de control
+        lastResort = lastResort.replace(/[\u0000-\u001F]/g, '');
+        
+        console.log(`Últimos 50 caracteres después de limpieza de emergencia: "${lastResort.substring(lastResort.length - 50)}"`);
+        
+        return lastResort;
+      }
     }
+  } catch (error) {
+    console.error("Error crítico en sanitizeJsonString:", error);
+    // En caso de error catastrófico, devolver la cadena original
+    return jsonStr;
   }
-  
-  // 3. Primero, escapar correctamente las tabulaciones, retornos de carro y saltos de línea
-  sanitized = sanitized.replace(/\t/g, '\\t');
-  sanitized = sanitized.replace(/\r/g, '\\r');
-  sanitized = sanitized.replace(/\n/g, '\\n');
-  
-  // 4. Eliminar otros caracteres de control que no deberían estar en un string JSON
-  sanitized = sanitized.replace(/[\u0000-\u001F]/g, '');
-  
-  // 5. También manejar casos donde hay barras invertidas sin escapar
-  sanitized = sanitized.replace(/([^\\])\\"/g, '$1\\\"');
-  
-  // 6. Intentar reparar llaves o corchetes desbalanceados (no es perfecto pero ayuda en casos simples)
-  let openBraces = 0;
-  let openBrackets = 0;
-  for (let i = 0; i < sanitized.length; i++) {
-    if (sanitized[i] === '{') openBraces++;
-    else if (sanitized[i] === '}') openBraces--;
-    else if (sanitized[i] === '[') openBrackets++;
-    else if (sanitized[i] === ']') openBrackets--;
-  }
-  
-  // Si faltan llaves o corchetes de cierre, añadirlos
-  while (openBraces > 0) {
-    sanitized += '}';
-    openBraces--;
-  }
-  
-  while (openBrackets > 0) {
-    sanitized += ']';
-    openBrackets--;
-  }
-  
-  // Depuración para ver si el JSON ahora comienza correctamente
-  console.log(`Primeros 50 caracteres después de sanitizar: "${sanitized.substring(0, 50)}"`);
-  
-  return sanitized;
 };
 
 export const analyzeChartWithGemini = async (
