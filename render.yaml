@@ -3,8 +3,8 @@ services:
     name: traderoad-ai
     env: node
     buildCommand: |
-      # Instalar dependencias del frontend
-      npm install
+      # Instalar dependencias del frontend incluyendo dependencias de desarrollo
+      npm install --include=dev
       
       # Copiar CCXT browser a carpeta pública para asegurar compatibilidad con navegador
       echo "Copiando CCXT browser a carpeta pública..."
