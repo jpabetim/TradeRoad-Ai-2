@@ -66,7 +66,7 @@ app.post('/api/analyze-chart', async (req, res) => {
             temperature: 0.2, 
             topK: 32, 
             topP: 0.95, 
-            responseMimeType: 'application/json', 
+            response_mime_type: 'application/json', 
             maxOutputTokens: 8192 
         };
 
