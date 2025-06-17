@@ -31,7 +31,7 @@ services:
       
       # Instalar dependencias del servidor
       cd server && npm install
-    startCommand: node start.js
+    startCommand: node start.cjs
     pullRequestPreviewsEnabled: true
     headers:
       - path: /*
