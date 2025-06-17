@@ -165,8 +165,8 @@ app.post('/api/analyze-chart', async (req, res) => {
         } catch (finalJsonError) {
           console.error('❌ No se pudo convertir a JSON válido:', finalJsonError.message);
           
-          // Si todo falla, creamos un JSON básico para evitar errores en el frontend
-          jsonData = {
+          // Si todo falla, creamos un JSON serializado como string básico para devolver al frontend
+          const errorResponse = {
             marketStructure: {
               trend: "undefined",
               keyLevels: [],
@@ -182,12 +182,14 @@ app.post('/api/analyze-chart', async (req, res) => {
             },
             errors: [finalJsonError.message, "La respuesta de la API no se pudo convertir a JSON válido."]
           };
+          jsonData = JSON.stringify(errorResponse);
           console.log('⚠️ Using fallback JSON structure');
         }
       }
       
-      // Enviar la respuesta parseada como JSON
-      res.json({ analysis: JSON.stringify(jsonData) });
+      // Enviar la respuesta directamente como una cadena JSON sin doble stringify
+      // El frontend espera recibir una cadena JSON en response.data.analysis que luego parseará
+      res.json({ analysis: jsonData });
       console.log('✅ Response sent to client successfully');
       
     } catch (genError) {
