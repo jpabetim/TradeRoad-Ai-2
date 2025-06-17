@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import RealTimeTradingChart from './RealTimeTradingChart';
-import { getHistoricalData } from '../services/ccxtService';
-import { ChartCandlestickData, DataSource, GeminiAnalysisResult, MarketType, MovingAverageConfig } from '../types';
+import { getHistoricalData as getCcxtHistoricalData } from '../services/ccxtService';
+import { authenticate, getHistoricalData as getQuoddHistoricalData, getCurrentPrice } from '../services/quoddService';
+import { DataSource, GeminiAnalysisResult, MarketType, MovingAverageConfig } from '../types';
 import { UTCTimestamp, CandlestickData } from 'lightweight-charts';
 
 // Definir estructura de fuentes de datos disponibles
@@ -16,11 +17,15 @@ const AVAILABLE_DATA_SOURCES: DataSourceConfig[] = [
   { id: 'binance', name: 'Binance', compatibleMarketTypes: ['crypto'] },
   { id: 'bingx', name: 'BingX', compatibleMarketTypes: ['crypto'] },
   { id: 'alphavantage', name: 'Alpha Vantage', compatibleMarketTypes: ['stocks', 'forex', 'indices', 'commodities'] },
-  { id: 'oanda', name: 'OANDA', compatibleMarketTypes: ['forex'] }
+  { id: 'oanda', name: 'OANDA', compatibleMarketTypes: ['forex'] },
+  { id: 'quodd', name: 'QUODD', compatibleMarketTypes: ['crypto', 'stocks', 'forex', 'indices', 'commodities'] }
 ];
 
 // Lista de proveedores nativos (con WebSockets) que mantienen su implementación original
 const NATIVE_PROVIDERS = ['binance', 'bingx'];
+
+// Proveedor QUODD - implementación REST API personalizada
+const QUODD_PROVIDER = 'quodd';
 
 interface RealTimeTradingChartAdapterProps {
   dataSource: DataSource;
@@ -56,6 +61,11 @@ const RealTimeTradingChartAdapter: React.FC<RealTimeTradingChartAdapterProps> = 
     return <RealTimeTradingChart {...props} />;
   }
   
+  // Si es el proveedor QUODD, usamos la implementación de QUODD API
+  if (dataSource === QUODD_PROVIDER) {
+    return <QuoddChartImplementation {...props} />;
+  }
+  
   // Para los demás proveedores, usamos CCXT adaptado
   useEffect(() => {
     const loadData = async () => {
@@ -65,7 +75,7 @@ const RealTimeTradingChartAdapter: React.FC<RealTimeTradingChartAdapterProps> = 
         const marketType = getMarketTypeForDataSource(dataSource);
         console.log(`Loading ${marketType} data for ${symbol} using CCXT (${dataSource})`);
         
-        const data = await getHistoricalData(symbol, timeframe, marketType, dataSource);
+        const data = await getCcxtHistoricalData(symbol, timeframe, marketType, dataSource);
         
         // Convertir los datos al formato UTCTimestamp que espera el componente
         const formattedData = data.map(candle => ({
@@ -121,6 +131,124 @@ const RealTimeTradingChartAdapter: React.FC<RealTimeTradingChartAdapterProps> = 
   };
   
   return <RealTimeTradingChart {...adaptedProps} staticData={adaptedData} />;
+};
+
+// Implementación específica para QUODD API
+const QuoddChartImplementation: React.FC<RealTimeTradingChartAdapterProps> = (props) => {
+  const { symbol, timeframe } = props;
+  const [adaptedData, setAdaptedData] = useState<CandlestickData<UTCTimestamp>[]>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  // Inicialización y autenticación con QUODD
+  useEffect(() => {
+    const init = async () => {
+      try {
+        props.onChartLoadingStateChange(true);
+        const authSuccess = await authenticate();
+        setIsAuthenticated(authSuccess);
+        if (!authSuccess) {
+          console.error('No se pudo autenticar con QUODD API');
+          return;
+        }
+      } catch (error) {
+        console.error('Error durante la autenticación con QUODD:', error);
+      } finally {
+        props.onChartLoadingStateChange(false);
+      }
+    };
+    
+    init();
+  }, []); // Ejecutar solo al montar el componente
+  
+  // Cargar datos históricos y manejar actualizaciones
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    
+    const loadQuoddData = async () => {
+      try {
+        props.onChartLoadingStateChange(true);
+        console.log(`Loading data from QUODD API for ${symbol}`);
+        
+        // Obtener datos históricos desde QUODD
+        const histData = await getQuoddHistoricalData(symbol, timeframe);
+        
+        // Adaptar formato para lighthouse-charts
+        const formattedData = histData.map(candle => ({
+          time: new Date(candle.timestamp).getTime() / 1000 as UTCTimestamp,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: candle.volume
+        }));
+        
+        setAdaptedData(formattedData);
+        
+        // Actualizar información del último precio
+        if (formattedData.length > 0) {
+          const lastCandle = formattedData[formattedData.length - 1];
+          props.onLatestChartInfoUpdate({
+            price: lastCandle.close,
+            volume: lastCandle.volume
+          });
+          
+          // También obtener el precio actual en tiempo real
+          const currentPrice = await getCurrentPrice(symbol);
+          if (currentPrice) {
+            props.onLatestChartInfoUpdate({
+              price: currentPrice,
+              volume: lastCandle.volume // Mantener el último volumen conocido
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error loading data from QUODD:", error);
+      } finally {
+        props.onChartLoadingStateChange(false);
+      }
+    };
+    
+    loadQuoddData();
+    
+    // Configurar polling para actualizar precios cada 10 segundos (similar a WebSocket)
+    const intervalId = setInterval(async () => {
+      try {
+        const currentPrice = await getCurrentPrice(symbol);
+        if (currentPrice && adaptedData.length > 0) {
+          const lastCandle = adaptedData[adaptedData.length - 1];
+          props.onLatestChartInfoUpdate({
+            price: currentPrice,
+            volume: 'volume' in lastCandle ? (lastCandle as any).volume : null
+          });
+        }
+      } catch (error) {
+        console.error("Error updating price from QUODD:", error);
+      }
+    }, 10000); // 10 segundos
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [isAuthenticated, symbol, timeframe]);
+  
+  // Configurar el proveedor personalizado QUODD
+  const quoddProviderConf = {
+    type: 'static',
+    name: 'QUODD API',
+    historicalApi: () => '', // No se usa directamente
+    formatSymbol: (s: string) => s,
+    parseHistorical: () => adaptedData,
+    parseKline: () => ({ time: 0, open: 0, high: 0, low: 0, close: 0 }),
+    parseTicker: () => ({})
+  };
+
+  return (
+    <RealTimeTradingChart 
+      {...props} 
+      providerOverride={quoddProviderConf} 
+      staticData={adaptedData} 
+    />
+  );
 };
 
 export default RealTimeTradingChartAdapter;

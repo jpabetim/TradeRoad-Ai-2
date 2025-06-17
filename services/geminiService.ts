@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { GeminiRequestPayload } from '../types';
+import { GeminiRequestPayload, GeminiAnalysisResult } from '../types';
 import { getFullAnalysisPrompt } from '../constants';
 
 // Extender propiedades de window para TypeScript
@@ -19,31 +19,8 @@ declare global {
   }
 }
 
-// Interfaces para la integración con la API de Gemini
-export interface GeminiAnalysisResult {
-  marketAnalysis: string;
-  tradingRecommendation: string;
-  technicalIndicators: {
-    name: string;
-    value: string;
-    interpretation: string;
-  }[];
-  supportResistanceLevels: {
-    type: 'support' | 'resistance';
-    price: number;
-    strength: 'weak' | 'moderate' | 'strong';
-  }[];
-  marketSentiment: 'bullish' | 'bearish' | 'neutral';
-  potentialEntryPoints: {
-    price: number;
-    type: 'buy' | 'sell';
-    stopLoss?: number;
-    takeProfit?: number;
-    rationale: string;
-  }[];
-  confidenceScore: number;
-  shortTermOutlook: string;
-}
+// Exportamos GeminiAnalysisResult desde types.ts
+export type { GeminiAnalysisResult };
 
 // Extendemos la interfaz del payload de Gemini para incluir volumen y (opcionalmente) API key
 export interface ExtendedGeminiRequestPayload extends GeminiRequestPayload {

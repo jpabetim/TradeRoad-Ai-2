@@ -1,0 +1,162 @@
+.quodd-demo-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: 'Inter', sans-serif;
+}
+
+h1, h2 {
+  color: #0f172a;
+}
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 10px;
+  background-color: #f8fafc;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.status-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 10px;
+}
+
+.authenticated {
+  background-color: #22c55e;
+}
+
+.not-authenticated {
+  background-color: #ef4444;
+}
+
+.status-message {
+  font-size: 14px;
+  color: #64748b;
+}
+
+.price-display {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f1f5f9;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.current-price, .current-volume {
+  font-size: 16px;
+  color: #334155;
+}
+
+.current-price strong {
+  color: #16a34a;
+  font-size: 18px;
+}
+
+.controls {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f1f5f9;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.symbol-selector, .timeframe-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.symbol-selector label, .timeframe-selector label {
+  font-weight: 600;
+  color: #334155;
+}
+
+.symbol-selector select, .timeframe-selector select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background-color: white;
+  min-width: 150px;
+}
+
+.chart-container {
+  margin-bottom: 30px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  background-color: #0f172a;
+}
+
+.not-authenticated-message {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #0f172a;
+  color: #cbd5e1;
+}
+
+.info-section {
+  padding: 20px;
+  background-color: #f8fafc;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.info-section h2 {
+  margin-top: 0;
+  color: #334155;
+}
+
+.info-section ul {
+  padding-left: 20px;
+}
+
+.info-section li {
+  margin-bottom: 10px;
+  color: #475569;
+}
+
+@media (prefers-color-scheme: dark) {
+  body.dark-mode .quodd-demo-container {
+    background-color: #0f172a;
+  }
+  
+  body.dark-mode h1,
+  body.dark-mode h2 {
+    color: #f1f5f9;
+  }
+  
+  body.dark-mode .status-bar,
+  body.dark-mode .price-display,
+  body.dark-mode .controls,
+  body.dark-mode .info-section {
+    background-color: #1e293b;
+  }
+  
+  body.dark-mode .status-message,
+  body.dark-mode .current-price,
+  body.dark-mode .current-volume,
+  body.dark-mode .symbol-selector label,
+  body.dark-mode .timeframe-selector label,
+  body.dark-mode .info-section h2,
+  body.dark-mode .info-section li {
+    color: #cbd5e1;
+  }
+  
+  body.dark-mode .symbol-selector select,
+  body.dark-mode .timeframe-selector select {
+    background-color: #334155;
+    border-color: #475569;
+    color: #f1f5f9;
+  }
+}

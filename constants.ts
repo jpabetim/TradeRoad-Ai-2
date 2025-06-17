@@ -393,6 +393,7 @@ export const AVAILABLE_DATA_SOURCES = [
     { value: 'bingx', label: 'BingX Futures', marketTypes: ['crypto'] },
     { value: 'alphavantage', label: 'Alpha Vantage', marketTypes: ['forex', 'indices', 'commodities', 'stocks'] },
     { value: 'oanda', label: 'OANDA', marketTypes: ['forex'] },
+    { value: 'quodd', label: 'QUODD API', marketTypes: ['crypto', 'forex', 'indices', 'commodities', 'stocks'] },
 ];
 
 export const DEFAULT_MARKET_TYPE = 'crypto';
@@ -454,5 +455,15 @@ export const TIMEFRAME_MAPPINGS = {
         '4h': 'H4',
         '1d': 'D',
         '1w': 'W'
+    },
+    quodd: {
+        '1m': '1m',
+        '5m': '5m',
+        '15m': '15m',
+        '30m': '30m',
+        '1h': '1h',
+        '4h': '4h',
+        '1d': '1d',
+        '1w': '1w'
     }
 };

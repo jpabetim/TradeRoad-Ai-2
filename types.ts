@@ -148,7 +148,7 @@ export interface GeminiRequestPayload {
   historicalDataSummary?: string; // Optional: a brief summary of recent price action if available
 }
 
-export type DataSource = 'binance' | 'bingx' | 'alphavantage' | 'oanda';
+export type DataSource = 'binance' | 'bingx' | 'alphavantage' | 'oanda' | 'quodd';
 
 export type MarketType = 'crypto' | 'forex' | 'indices' | 'commodities' | 'stocks';
 

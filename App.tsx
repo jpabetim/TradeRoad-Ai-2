@@ -3,16 +3,16 @@ import ControlsPanel from './components/ControlsPanel';
 import RealTimeTradingChartAdapter from "./components/RealTimeTradingChartAdapter";
 import AnalysisPanel from './components/AnalysisPanel';
 import ApiKeyMessage from './components/ApiKeyMessage';
-import { GeminiAnalysisResult, DataSource, MovingAverageConfig, MarketType } from './types';
+import QuoddDemoPage from './components/QuoddDemoPage';
+import { DataSource, MovingAverageConfig, MarketType } from './types';
+import { GeminiAnalysisResult } from './services/geminiService';
 import { analyzeChartWithGemini, ExtendedGeminiRequestPayload } from './services/geminiService';
 import { 
-  DEFAULT_SYMBOL, 
   DEFAULT_TIMEFRAME, 
   DEFAULT_DATA_SOURCE, 
   DEFAULT_MARKET_TYPE, 
   DEFAULT_SYMBOLS, 
-  AVAILABLE_DATA_SOURCES,
-  AVAILABLE_MARKET_TYPES
+  AVAILABLE_DATA_SOURCES
 } from './constants';
 
 // Helper for debouncing
@@ -96,13 +96,17 @@ const getConsistentSymbolForDataSource = (symbol: string, ds: DataSource): strin
 };
 
 
+// Tipo para manejar las vistas de la aplicación
+type AppView = 'main' | 'quoddDemo';
+
 const App: React.FC = () => {
-  // Load initial values from localStorage
-  const initialRawSymbol = getLocalStorageItem('traderoad_actualSymbol', DEFAULT_SYMBOL);
-  const initialDataSource = getLocalStorageItem('traderoad_dataSource', DEFAULT_DATA_SOURCE);
+  // Estado para controlar qué vista se muestra
+  const [currentView, setCurrentView] = useState<AppView>('main');
   
-  // Ensure initial symbol is consistent with initial data source
-  const consistentInitialSymbol = getConsistentSymbolForDataSource(initialRawSymbol, initialDataSource);
+  // Load initial symbol from localStorage
+  // const initialRawSymbol = getLocalStorageItem('traderoad_actualSymbol', DEFAULT_SYMBOL);
+  // const initialDataSource = getLocalStorageItem('traderoad_dataSource', DEFAULT_DATA_SOURCE);
+  // Estos se cargan directamente en los estados
 
   // Estado para el tipo de mercado (crypto, forex, indices, commodities, stocks)
   const [marketType, setMarketType] = useState<MarketType>(() => 
@@ -361,7 +365,27 @@ const App: React.FC = () => {
   return (
     <div className={`flex flex-col h-screen antialiased ${theme === 'dark' ? 'bg-slate-900 text-slate-100' : 'bg-gray-100 text-gray-900'}`}>
       <header className={`p-2 sm:p-3 shadow-md flex justify-between items-center ${theme === 'dark' ? 'bg-slate-800' : 'bg-white border-b border-gray-200'}`}>
-        <h1 className={`text-lg sm:text-xl font-bold ${theme === 'dark' ? 'text-sky-400' : 'text-sky-600'}`}>TradeRoad</h1>
+        <div className="flex items-center gap-4">
+          <h1 className={`text-lg sm:text-xl font-bold ${theme === 'dark' ? 'text-sky-400' : 'text-sky-600'}`}>TradeRoad</h1>
+          <nav className="flex items-center gap-3">
+            <button 
+              onClick={() => setCurrentView('main')}
+              className={`px-3 py-1 text-sm rounded-md transition-colors ${currentView === 'main' ? 
+                (theme === 'dark' ? 'bg-sky-600 text-white' : 'bg-sky-500 text-white') : 
+                (theme === 'dark' ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-700')}`}
+            >
+              Principal
+            </button>
+            <button 
+              onClick={() => setCurrentView('quoddDemo')}
+              className={`px-3 py-1 text-sm rounded-md transition-colors ${currentView === 'quoddDemo' ? 
+                (theme === 'dark' ? 'bg-sky-600 text-white' : 'bg-sky-500 text-white') : 
+                (theme === 'dark' ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-700')}`}
+            >
+              QUODD Demo
+            </button>
+          </nav>
+        </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => setIsPanelVisible(!isPanelVisible)}
@@ -387,74 +411,79 @@ const App: React.FC = () => {
 
       <ApiKeyMessage apiKeyPresent={apiKeyPresent} />
 
-      <main className="flex-grow flex flex-col md:flex-row p-2 sm:p-4 gap-2 sm:gap-4 overflow-y-auto">
-
-        <div className={`w-full flex-1 flex flex-col gap-2 sm:gap-4 overflow-hidden order-1 ${isPanelVisible ? 'md:order-2' : 'md:order-1'}`}>
-          <div className={`flex-grow min-h-[300px] sm:min-h-[400px] md:min-h-0 shadow-lg rounded-lg overflow-hidden ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
-            <RealTimeTradingChartAdapter
-              dataSource={dataSource}
-              symbol={actualSymbol} // This is now consistently formatted
-              timeframe={timeframe}
-              analysisResult={analysisResult}
-              onLatestChartInfoUpdate={handleLatestChartInfoUpdate}
-              onChartLoadingStateChange={handleChartLoadingStateChange}
-              movingAverages={movingAverages}
-              theme={theme}
-              chartPaneBackgroundColor={chartPaneBackgroundColor}
-              volumePaneHeight={volumePaneHeight}
-              showAiAnalysisDrawings={showAiAnalysisDrawings}
-              wSignalColor={wSignalColor}
-              wSignalOpacity={wSignalOpacity / 100} // Pass opacity as 0-1 for chart
-              showWSignals={showWSignals}
-            />
-          </div>
-        </div>
-
-        <div
-          id="controls-analysis-panel"
-          className={`w-full md:w-80 lg:w-[360px] xl:w-[400px] flex-none flex flex-col gap-2 sm:gap-4 overflow-y-auto order-2 md:order-1 ${!isPanelVisible ? 'hidden' : ''}`}
-        >
-          <div className={`${theme === 'dark' ? 'bg-slate-800' : 'bg-white'} p-1 rounded-lg shadow-md flex-shrink-0 order-1 md:order-none`}>
-            <ControlsPanel
-              symbolInput={symbolInput} // Display this in input
-              setSymbolInput={handleSymbolInputChange} // User typing handler
-              timeframe={timeframe}
-              setTimeframe={setTimeframe}
-              dataSource={dataSource}
-              setDataSource={handleDataSourceChange} // Source change handler
-              marketType={marketType}
-              setMarketType={handleMarketTypeChange}
-              onAnalyze={handleAnalyze}
-              isLoading={isLoading}
-              apiKeyPresent={apiKeyPresent}
-              isChartLoading={isChartLoading}
-              chartPaneBackgroundColor={chartPaneBackgroundColor}
-              setChartPaneBackgroundColor={setChartPaneBackgroundColor}
-              volumePaneHeight={volumePaneHeight}
-              setVolumePaneHeight={setVolumePaneHeight}
-              showAiAnalysisDrawings={showAiAnalysisDrawings}
-              setShowAiAnalysisDrawings={setShowAiAnalysisDrawings}
-              movingAverages={movingAverages}
-              setMovingAverages={setMovingAverages}
-              wSignalColor={wSignalColor}
-              setWSignalColor={setWSignalColor}
-              wSignalOpacity={wSignalOpacity}
-              setWSignalOpacity={setWSignalOpacity}
-              showWSignals={showWSignals}
-              setShowWSignals={setShowWSignals}
-            />
+      {currentView === 'quoddDemo' ? (
+        <main className="flex-grow overflow-y-auto">
+          <QuoddDemoPage />
+        </main>
+      ) : (
+        <main className="flex-grow flex flex-col md:flex-row p-2 sm:p-4 gap-2 sm:gap-4 overflow-y-auto">
+          <div className={`w-full flex-1 flex flex-col gap-2 sm:gap-4 overflow-hidden order-1 ${isPanelVisible ? 'md:order-2' : 'md:order-1'}`}>
+            <div className={`flex-grow min-h-[300px] sm:min-h-[400px] md:min-h-0 shadow-lg rounded-lg overflow-hidden ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
+              <RealTimeTradingChartAdapter
+                dataSource={dataSource}
+                symbol={actualSymbol} // This is now consistently formatted
+                timeframe={timeframe}
+                analysisResult={analysisResult}
+                onLatestChartInfoUpdate={handleLatestChartInfoUpdate}
+                onChartLoadingStateChange={handleChartLoadingStateChange}
+                movingAverages={movingAverages}
+                theme={theme}
+                chartPaneBackgroundColor={chartPaneBackgroundColor}
+                volumePaneHeight={volumePaneHeight}
+                showAiAnalysisDrawings={showAiAnalysisDrawings}
+                wSignalColor={wSignalColor}
+                wSignalOpacity={wSignalOpacity / 100} // Pass opacity as 0-1 for chart
+                showWSignals={showWSignals}
+              />
+            </div>
           </div>
 
-          <div className={`${theme === 'dark' ? 'bg-slate-800' : 'bg-white'} rounded-lg shadow-md order-2 md:order-none`}>
-            <AnalysisPanel
-              analysisResult={analysisResult}
-              isLoading={isLoading && !analysisResult && !error}
-              error={error}
-              isMobile={isMobile}
-            />
+          <div
+            id="controls-analysis-panel"
+            className={`w-full md:w-80 lg:w-[360px] xl:w-[400px] flex-none flex flex-col gap-2 sm:gap-4 overflow-y-auto order-2 md:order-1 ${!isPanelVisible ? 'hidden' : ''}`}
+          >
+            <div className={`${theme === 'dark' ? 'bg-slate-800' : 'bg-white'} p-1 rounded-lg shadow-md flex-shrink-0 order-1 md:order-none`}>
+              <ControlsPanel
+                symbolInput={symbolInput} // Display this in input
+                setSymbolInput={handleSymbolInputChange} // User typing handler
+                timeframe={timeframe}
+                setTimeframe={setTimeframe}
+                dataSource={dataSource}
+                setDataSource={handleDataSourceChange} // Source change handler
+                marketType={marketType}
+                setMarketType={handleMarketTypeChange}
+                onAnalyze={handleAnalyze}
+                isLoading={isLoading}
+                apiKeyPresent={apiKeyPresent}
+                isChartLoading={isChartLoading}
+                chartPaneBackgroundColor={chartPaneBackgroundColor}
+                setChartPaneBackgroundColor={setChartPaneBackgroundColor}
+                volumePaneHeight={volumePaneHeight}
+                setVolumePaneHeight={setVolumePaneHeight}
+                showAiAnalysisDrawings={showAiAnalysisDrawings}
+                setShowAiAnalysisDrawings={setShowAiAnalysisDrawings}
+                movingAverages={movingAverages}
+                setMovingAverages={setMovingAverages}
+                wSignalColor={wSignalColor}
+                setWSignalColor={setWSignalColor}
+                wSignalOpacity={wSignalOpacity}
+                setWSignalOpacity={setWSignalOpacity}
+                showWSignals={showWSignals}
+                setShowWSignals={setShowWSignals}
+              />
+            </div>
+
+            <div className={`${theme === 'dark' ? 'bg-slate-800' : 'bg-white'} rounded-lg shadow-md order-2 md:order-none`}>
+              <AnalysisPanel
+                analysisResult={analysisResult}
+                isLoading={isLoading && !analysisResult && !error}
+                error={error}
+                isMobile={isMobile}
+              />
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      )}
     </div>
   );
 };
