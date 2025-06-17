@@ -120,7 +120,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
               onClick={() => setTimeframe(tf)}
               className={`py-1 px-1 text-xs font-medium rounded-md transition-colors ${
                 timeframe === tf
-                  ? 'bg-sky-500 text-white hover:bg-sky-600'
+                  ? 'bg-sky-500 text-white hover:bg-sky-600 ring-2 ring-sky-300 font-bold shadow-md'
                   : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
               }`}
             >
@@ -133,7 +133,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
       <div className="flex flex-col sm:flex-row gap-2 mt-3 sm:mt-4">
         <button
           onClick={() => setShowAiAnalysisDrawings(!showAiAnalysisDrawings)}
-          className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-medium py-1.5 sm:py-2 px-2 sm:px-3 rounded-lg focus:outline-none focus:shadow-outline transition-colors text-xs sm:text-sm"
+          className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-medium py-1 px-2 rounded-lg focus:outline-none focus:shadow-outline transition-colors text-xs"
           aria-label="Toggle AI Analysis Drawings on Chart"
         >
           {showAiAnalysisDrawings ? 'Hide AI Drawings' : 'Show AI Drawings'}
@@ -141,7 +141,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
         <button
           onClick={onAnalyze}
           disabled={isLoading || isChartLoading || !apiKeyPresent}
-          className="flex-1 bg-sky-600 hover:bg-sky-700 disabled:bg-slate-600 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold py-1.5 sm:py-2 px-2 sm:px-3 rounded-lg focus:outline-none focus:shadow-outline transition-colors text-xs sm:text-sm"
+          className="flex-1 bg-sky-600 hover:bg-sky-700 disabled:bg-slate-600 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold py-1 px-2 rounded-lg focus:outline-none focus:shadow-outline transition-colors text-xs"
           aria-label="Analyze Chart with AI"
         >
           {isLoading ? 'Analyzing...' : (isChartLoading ? 'Chart Loading...' : 'Analyze (AI)')}

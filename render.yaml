@@ -1,43 +1,48 @@
 services:
   - type: web
     name: traderoad-ai
-    env: static
+    env: node
     buildCommand: |
-      # Instalar dependencias
+      # Instalar dependencias del frontend
       npm install
       
-      # Ejecutar script para inyectar API key en index.html
-      node ./scripts/generate-config.js
+      # Verificar si existe el script de configuración
+      if [ -f "./scripts/generate-config.cjs" ]; then
+        echo "Ejecutando generate-config.cjs"
+        node ./scripts/generate-config.cjs
+      elif [ -f "./scripts/generate-config.js" ]; then
+        echo "Ejecutando generate-config.js"
+        node ./scripts/generate-config.js
+      else
+        echo "No se encontró script de configuración"
+      fi
       
       # Mostrar las líneas relevantes de index.html DESPUÉS de la inyección de la API key
       echo "Mostrando sección de script de API Key en index.html DESPUÉS de la inyección:"
-      grep -C 15 'const injectedApiKey' index.html
+      grep -C 15 'const injectedApiKey' index.html || echo "No se encontró la clave 'injectedApiKey'"
       echo "-----------------------------------------------------------------"
       
-      # Construir la aplicación (Vite se encargará de procesar el index.html modificado)
+      # Construir la aplicación frontend
       npm run build
       
       # Listar archivos en dist para asegurarse de que todo está correcto
       echo "Contenido del directorio dist:"
       ls -la ./dist
-    staticPublishPath: ./dist
+      
+      # Instalar dependencias del servidor
+      cd server && npm install
+    startCommand: node start.js
     pullRequestPreviewsEnabled: true
     headers:
       - path: /*
         name: Cache-Control
         value: no-cache
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
     envVars:
       - key: NODE_VERSION
         value: 18.15.0
       - key: API_KEY
-        sync: true # La variable que estamos usando actualmente
+        sync: true # Compatibilidad con el método anterior
       - key: VITE_API_KEY
         sync: true # Alternativa para Vite
       - key: GEMINI_API_KEY
-        sync: true # Nombre alternativo que podría estar usando la app
-      - key: REACT_APP_API_KEY
-        sync: true # Nombre alternativo para React
+        sync: true # Esta es la variable que usará el servidor backend

@@ -81,33 +81,27 @@ const PROVIDERS_CONFIG: { binance: BinanceProviderConfig; bingx: BingXProviderCo
   bingx: {
     type: 'bingx',
     name: 'BingX Futures',
-    historicalApi: (symbol, interval) => `https://api.allorigins.win/raw?url=https://open-api.bingx.com/openApi/swap/v2/quote/klines?symbol=${symbol}&interval=${interval}&limit=500`,
+    historicalApi: (symbol, interval) => `/api/bingx-history?symbol=${symbol}&interval=${interval}`,
     wsBase: 'wss://open-api-swap.bingx.com/swap-market',
     formatSymbol: (s) => s.toUpperCase(),
-    parseHistorical: (allOriginsParsedResponse: any): CandlestickData[] => {
-      if (allOriginsParsedResponse && typeof allOriginsParsedResponse.contents === 'string') {
-        try {
-          const bingxApiResponse = JSON.parse(allOriginsParsedResponse.contents);
-          if (bingxApiResponse && bingxApiResponse.code === "0" && Array.isArray(bingxApiResponse.data)) {
-            return bingxApiResponse.data.map(k => ({
-              time: k.time / 1000 as UTCTimestamp,
-              open: parseFloat(k.open),
-              high: parseFloat(k.high),
-              low: parseFloat(k.low),
-              close: parseFloat(k.close),
-              volume: parseFloat(k.volume)
-            }));
-          } else {
-            console.error("BingX API error or malformed data in 'contents':", bingxApiResponse?.msg || "Malformed data", bingxApiResponse);
-            throw new Error(`BingX API error: ${bingxApiResponse?.msg || "Malformed data in 'contents'."}`);
-          }
-        } catch (e) {
-          console.error("Error parsing BingX 'contents' string from allorigins.win as JSON:", e, allOriginsParsedResponse.contents);
-          throw new Error("Error parsing BingX 'contents' string from allorigins.win as JSON.");
+    parseHistorical: (bingxApiResponse: any): CandlestickData[] => {
+      try {
+        if (bingxApiResponse && bingxApiResponse.code === "0" && Array.isArray(bingxApiResponse.data)) {
+          return bingxApiResponse.data.map(k => ({
+            time: k.time / 1000 as UTCTimestamp,
+            open: parseFloat(k.open),
+            high: parseFloat(k.high),
+            low: parseFloat(k.low),
+            close: parseFloat(k.close),
+            volume: parseFloat(k.volume)
+          }));
+        } else {
+          console.error('BingX API error or non-zero code:', bingxApiResponse?.msg, bingxApiResponse);
+          throw new Error(`BingX API error: ${bingxApiResponse?.msg || 'Unknown error'}`);
         }
-      } else {
-        console.error("Invalid response structure from allorigins.win proxy for BingX historical data. 'contents' field missing or not a string:", allOriginsParsedResponse);
-        throw new Error("Invalid response structure from allorigins.win proxy for BingX historical data.");
+      } catch (e) {
+        console.error('Failed to parse BingX API response:', e);
+        throw new Error('Failed to parse BingX API response');
       }
     },
     getKlineSubMessage: (symbol, interval) => JSON.stringify({ id: crypto.randomUUID(), reqType: 'sub', dataType: `${symbol}@kline_${interval}` }),
