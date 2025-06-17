@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import ControlsPanel from './components/ControlsPanel';
-import RealTimeTradingChart from './components/RealTimeTradingChart';
+import RealTimeTradingChartAdapter from "./components/RealTimeTradingChartAdapter";
 import AnalysisPanel from './components/AnalysisPanel';
 import ApiKeyMessage from './components/ApiKeyMessage';
 import { GeminiAnalysisResult, DataSource, MovingAverageConfig, MarketType } from './types';
@@ -392,7 +391,7 @@ const App: React.FC = () => {
 
         <div className={`w-full flex-1 flex flex-col gap-2 sm:gap-4 overflow-hidden order-1 ${isPanelVisible ? 'md:order-2' : 'md:order-1'}`}>
           <div className={`flex-grow min-h-[300px] sm:min-h-[400px] md:min-h-0 shadow-lg rounded-lg overflow-hidden ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
-            <RealTimeTradingChart
+            <RealTimeTradingChartAdapter
               dataSource={dataSource}
               symbol={actualSymbol} // This is now consistently formatted
               timeframe={timeframe}

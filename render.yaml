@@ -6,6 +6,11 @@ services:
       # Instalar dependencias del frontend
       npm install
       
+      # Copiar CCXT browser a carpeta pública para asegurar compatibilidad con navegador
+      echo "Copiando CCXT browser a carpeta pública..."
+      mkdir -p ./public/lib
+      cp ./node_modules/ccxt/dist/ccxt.browser.min.js ./public/lib/
+      
       # Verificar si existe el script de configuración
       if [ -f "./scripts/generate-config.cjs" ]; then
         echo "Ejecutando generate-config.cjs"

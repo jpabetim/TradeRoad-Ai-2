@@ -28,6 +28,9 @@ interface RealTimeTradingChartProps {
   wSignalColor: string; // Hex color string e.g. #FFD700
   wSignalOpacity: number; // Opacity from 0 to 1
   showWSignals: boolean; // New prop to control W-Signal visibility
+  // Nuevas propiedades para soporte de múltiples fuentes de datos
+  providerOverride?: any; // Configuración de proveedor personalizado
+  staticData?: CandlestickData[]; // Datos pre-cargados para fuentes sin WebSocket
   // RSI and DeltaZoneSettings props removed
   // rsiColor: string;
   // deltaZoneSettings: DeltaZoneSettings;
@@ -180,8 +183,14 @@ const RealTimeTradingChart: React.FC<RealTimeTradingChartProps> = ({
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'ok' | 'error'>('connecting');
   const [currentIntervalInSeconds, setCurrentIntervalInSeconds] = useState<number>(3600);
 
-  const providerConf = PROVIDERS_CONFIG[dataSource];
-  const formattedSymbol = rawSymbol && providerConf ? providerConf.formatSymbol(rawSymbol) : '';
+  // Si tenemos un proveedorOverride, usamos eso directamente con datos estáticos
+  // Si no, usamos la configuración estándar del proveedor si está disponible
+  const providerConf = providerOverride || (PROVIDERS_CONFIG[dataSource as 'binance' | 'bingx'] || null);
+  
+  // Formatear el símbolo solo si tenemos la configuración del proveedor y un método formatSymbol
+  const formattedSymbol = (rawSymbol && providerConf && providerConf.formatSymbol) 
+    ? providerConf.formatSymbol(rawSymbol) 
+    : rawSymbol;
   const apiTimeframe = mapTimeframeToApi(rawTimeframe);
 
   const getStrokeColor = (type: AnalysisPointType | string, isFvg: boolean = false): string => {
