@@ -6,6 +6,9 @@ services:
       # Instalar dependencias del frontend incluyendo dependencias de desarrollo
       npm install --include=dev
       
+      # Explícitamente instalar las dependencias de desarrollo críticas
+      npm install --no-save @vitejs/plugin-react @originjs/vite-plugin-commonjs vite-plugin-node-polyfills
+      
       # Copiar CCXT browser a carpeta pública para asegurar compatibilidad con navegador
       echo "Copiando CCXT browser a carpeta pública..."
       mkdir -p ./public/lib
@@ -26,6 +29,10 @@ services:
       echo "Mostrando sección de script de API Key en index.html DESPUÉS de la inyección:"
       grep -C 15 'const injectedApiKey' index.html || echo "No se encontró la clave 'injectedApiKey'"
       echo "-----------------------------------------------------------------"
+      
+      # Mostrar todas las dependencias instaladas para diagnóstico
+      echo "Listando todas las dependencias instaladas:"
+      npm list --depth=0
       
       # Construir la aplicación frontend
       npm run build
