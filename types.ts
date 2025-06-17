@@ -148,16 +148,20 @@ export interface GeminiRequestPayload {
   historicalDataSummary?: string; // Optional: a brief summary of recent price action if available
 }
 
-export type DataSource = 'binance' | 'bingx';
+export type DataSource = 'binance' | 'bingx' | 'alphavantage' | 'oanda';
+
+export type MarketType = 'crypto' | 'forex' | 'indices' | 'commodities' | 'stocks';
 
 export interface TickerData {
     provider: DataSource;
     symbol: string;
+    marketType: MarketType;
     price?: number;
     changePercent?: number;
     volume?: number; // Volume in base currency
     quoteVolume?: number; // Volume in quote currency
     lastPriceChange?: 'up' | 'down' | 'none';
+    displayName?: string; // Nombre más amigable para mostrar (ej: 'EUR/USD' en lugar de 'EUR_USD')
 }
 
 // For Lightweight Charts

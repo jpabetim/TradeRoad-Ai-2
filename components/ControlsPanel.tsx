@@ -1,8 +1,8 @@
 
 
-import React, { useState } from 'react';
-import { QUICK_SELECT_TIMEFRAMES, AVAILABLE_DATA_SOURCES, AVAILABLE_SYMBOLS_BINANCE, AVAILABLE_SYMBOLS_BINGX } from '../constants';
-import { DataSource, MovingAverageConfig } from '../types'; 
+import React, { useState, useEffect } from 'react';
+import { QUICK_SELECT_TIMEFRAMES, AVAILABLE_DATA_SOURCES, AVAILABLE_MARKET_TYPES, AVAILABLE_SYMBOLS_BINANCE, AVAILABLE_SYMBOLS_BINGX } from '../constants';
+import { DataSource, MovingAverageConfig, MarketType } from '../types'; 
 import MovingAverageControls from './MovingAverageControls';
 
 interface ControlsPanelProps {
@@ -12,6 +12,8 @@ interface ControlsPanelProps {
   setTimeframe: (timeframe: string) => void;
   dataSource: DataSource;
   setDataSource: (dataSource: DataSource) => void;
+  marketType: MarketType;
+  setMarketType: (marketType: MarketType) => void;
   onAnalyze: () => void;
   isLoading: boolean;
   apiKeyPresent: boolean;
@@ -39,6 +41,8 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
   setTimeframe,
   dataSource,
   setDataSource,
+  marketType,
+  setMarketType,
   onAnalyze,
   isLoading,
   apiKeyPresent,
@@ -65,13 +69,32 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
   };
 
   const getSymbolPlaceholder = () => {
-    if (dataSource === 'bingx') return 'E.g., BTC-USDT, XAUUSD';
-    return 'E.g., BTCUSDT, ETHUSDT';
+    switch (marketType) {
+      case 'crypto':
+        return dataSource === 'bingx' ? 'E.g., BTC-USDT, ETH-USDT' : 'E.g., BTCUSDT, ETHUSDT';
+      case 'forex':
+        return 'E.g., EUR/USD, GBP/JPY';
+      case 'indices':
+        return 'E.g., SPX, DJIA';
+      case 'commodities':
+        return 'E.g., XAUUSD (Gold), CL (Oil)';
+      case 'stocks':
+        return 'E.g., AAPL, MSFT';
+      default:
+        return 'Enter symbol';
+    }
   };
 
   const getSymbolSuggestions = () => {
-    if (dataSource === 'bingx') return AVAILABLE_SYMBOLS_BINGX;
-    return AVAILABLE_SYMBOLS_BINANCE;
+    // En una versión futura, esto podría obtener sugerencias específicas según el proveedor y tipo de mercado
+    if (dataSource === 'bingx' && marketType === 'crypto') return AVAILABLE_SYMBOLS_BINGX;
+    if (dataSource === 'binance' && marketType === 'crypto') return AVAILABLE_SYMBOLS_BINANCE;
+    return [];
+  };
+  
+  // Filtra las fuentes de datos según el tipo de mercado seleccionado
+  const getAvailableDataSources = () => {
+    return AVAILABLE_DATA_SOURCES.filter(ds => ds.marketTypes.includes(marketType));
   };
 
   const symbolDatalistId = "symbol-suggestions";
@@ -81,14 +104,44 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
       <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-sky-400">Market Controls</h2>
 
       <div className="mb-3 sm:mb-4">
-        <label htmlFor="dataSource" className="block mb-1 sm:mb-2 text-xs sm:text-sm font-medium text-slate-300">Data Source</label>
+        <label htmlFor="marketType" className="block mb-1 sm:mb-2 text-xs sm:text-sm font-medium text-slate-300">Tipo de Mercado</label>
+        <select
+          id="marketType"
+          value={marketType}
+          onChange={(e) => {
+            const newMarketType = e.target.value as MarketType;
+            setMarketType(newMarketType);
+            
+            // Verifica si el proveedor actual es compatible con el nuevo tipo de mercado
+            const isCurrentDataSourceCompatible = AVAILABLE_DATA_SOURCES.find(
+              ds => ds.value === dataSource
+            )?.marketTypes.includes(newMarketType);
+            
+            // Si no es compatible, cambia al primer proveedor compatible
+            if (!isCurrentDataSourceCompatible) {
+              const compatibleDataSource = AVAILABLE_DATA_SOURCES.find(
+                ds => ds.marketTypes.includes(newMarketType)
+              );
+              if (compatibleDataSource) {
+                setDataSource(compatibleDataSource.value as DataSource);
+              }
+            }
+          }}
+          className="bg-slate-700 border border-slate-600 text-slate-100 text-xs sm:text-sm rounded-lg focus:ring-sky-500 focus:border-sky-500 block w-full p-2 sm:p-2.5"
+        >
+          {AVAILABLE_MARKET_TYPES.map(mt => <option key={mt.value} value={mt.value}>{mt.label}</option>)}
+        </select>
+      </div>
+      
+      <div className="mb-3 sm:mb-4">
+        <label htmlFor="dataSource" className="block mb-1 sm:mb-2 text-xs sm:text-sm font-medium text-slate-300">Fuente de Datos</label>
         <select
           id="dataSource"
           value={dataSource}
           onChange={(e) => setDataSource(e.target.value as DataSource)}
           className="bg-slate-700 border border-slate-600 text-slate-100 text-xs sm:text-sm rounded-lg focus:ring-sky-500 focus:border-sky-500 block w-full p-2 sm:p-2.5"
         >
-          {AVAILABLE_DATA_SOURCES.map(ds => <option key={ds.value} value={ds.value}>{ds.label}</option>)}
+          {getAvailableDataSources().map(ds => <option key={ds.value} value={ds.value}>{ds.label}</option>)}
         </select>
       </div>
 

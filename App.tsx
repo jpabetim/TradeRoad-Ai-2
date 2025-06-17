@@ -4,9 +4,17 @@ import ControlsPanel from './components/ControlsPanel';
 import RealTimeTradingChart from './components/RealTimeTradingChart';
 import AnalysisPanel from './components/AnalysisPanel';
 import ApiKeyMessage from './components/ApiKeyMessage';
-import { GeminiAnalysisResult, DataSource, MovingAverageConfig } from './types';
+import { GeminiAnalysisResult, DataSource, MovingAverageConfig, MarketType } from './types';
 import { analyzeChartWithGemini, ExtendedGeminiRequestPayload } from './services/geminiService';
-import { DEFAULT_SYMBOL, DEFAULT_TIMEFRAME, DEFAULT_DATA_SOURCE } from './constants';
+import { 
+  DEFAULT_SYMBOL, 
+  DEFAULT_TIMEFRAME, 
+  DEFAULT_DATA_SOURCE, 
+  DEFAULT_MARKET_TYPE, 
+  DEFAULT_SYMBOLS, 
+  AVAILABLE_DATA_SOURCES,
+  AVAILABLE_MARKET_TYPES
+} from './constants';
 
 // Helper for debouncing
 function debounce<T extends (...args: any[]) => void>(func: T, delay: number): (...args: Parameters<T>) => void {
@@ -97,10 +105,42 @@ const App: React.FC = () => {
   // Ensure initial symbol is consistent with initial data source
   const consistentInitialSymbol = getConsistentSymbolForDataSource(initialRawSymbol, initialDataSource);
 
-  // Forzar Binance como proveedor de datos predeterminado para solucionar problemas con BingX
-  const [dataSource, setDataSource] = useState<DataSource>('binance');
-  const [actualSymbol, setActualSymbol] = useState<string>(getConsistentSymbolForDataSource(consistentInitialSymbol, 'binance'));
-  const [symbolInput, setSymbolInput] = useState<string>(consistentInitialSymbol);
+  // Estado para el tipo de mercado (crypto, forex, indices, commodities, stocks)
+  const [marketType, setMarketType] = useState<MarketType>(() => 
+    getLocalStorageItem('traderoad_marketType', DEFAULT_MARKET_TYPE)
+  );
+  
+  // Usar Binance como proveedor predeterminado para crypto, y Alpha Vantage para otros tipos de mercado
+  const getDefaultDataSourceForMarketType = (mType: MarketType): DataSource => {
+    if (mType === 'crypto') return 'binance';
+    if (mType === 'forex') return 'oanda'; // OANDA es mejor para forex
+    return 'alphavantage'; // Para índices, commodities y stocks
+  };
+  
+  // Determinar la fuente de datos según el tipo de mercado guardado o usar la predeterminada
+  const [dataSource, setDataSource] = useState<DataSource>(() => {
+    const savedDataSource = getLocalStorageItem('traderoad_dataSource', DEFAULT_DATA_SOURCE);
+    // Verificar si la fuente de datos guardada es compatible con el tipo de mercado
+    const marketTypeFromStorage = getLocalStorageItem('traderoad_marketType', DEFAULT_MARKET_TYPE);
+    const isCompatible = AVAILABLE_DATA_SOURCES.some(ds => 
+      ds.value === savedDataSource && ds.marketTypes.includes(marketTypeFromStorage)
+    );
+    return isCompatible ? savedDataSource : getDefaultDataSourceForMarketType(marketTypeFromStorage);
+  });
+  
+  // Obtener símbolo predeterminado según el tipo de mercado
+  const getDefaultSymbolForMarketType = (mType: MarketType) => {
+    return DEFAULT_SYMBOLS[mType] || DEFAULT_SYMBOLS.crypto;
+  };
+  
+  // Guardar el símbolo con formato consistente según el proveedor
+  const [actualSymbol, setActualSymbol] = useState<string>(() => {
+    const savedSymbol = getLocalStorageItem('traderoad_actualSymbol', getDefaultSymbolForMarketType(marketType));
+    return getConsistentSymbolForDataSource(savedSymbol, dataSource);
+  });
+  
+  // Input de símbolo para el control
+  const [symbolInput, setSymbolInput] = useState<string>(actualSymbol);
   const [timeframe, setTimeframe] = useState<string>(() => getLocalStorageItem('traderoad_timeframe', DEFAULT_TIMEFRAME));
   const [theme, setTheme] = useState<Theme>(() => getLocalStorageItem('traderoad_theme', 'dark'));
   const [movingAverages, setMovingAverages] = useState<MovingAverageConfig[]>(() => getLocalStorageItem('traderoad_movingAverages', initialMAs));
@@ -134,6 +174,7 @@ const App: React.FC = () => {
   // Guardar estados en localStorage cuando cambian
   useEffect(() => {
     if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem('traderoad_marketType', JSON.stringify(marketType));
       localStorage.setItem('traderoad_dataSource', JSON.stringify(dataSource));
       localStorage.setItem('traderoad_actualSymbol', JSON.stringify(actualSymbol)); // actualSymbol is now always consistent
       localStorage.setItem('traderoad_timeframe', JSON.stringify(timeframe));
@@ -148,7 +189,7 @@ const App: React.FC = () => {
       localStorage.setItem('traderoad_showWSignals', JSON.stringify(showWSignals));
     }
   }, [
-    dataSource, actualSymbol, timeframe, theme, movingAverages,
+    marketType, dataSource, actualSymbol, timeframe, theme, movingAverages,
     chartPaneBackgroundColor, volumePaneHeight, showAiAnalysisDrawings, isPanelVisible,
     wSignalColor, wSignalOpacity, showWSignals
   ]);
@@ -171,7 +212,6 @@ const App: React.FC = () => {
       console.warn("Gemini API Key (API_KEY) is not set or is the placeholder value. AI analysis will be disabled. Ensure it is set on window.process.env.API_KEY in index.html.");
     }
   }, []);
-
 
   const debouncedSetActualSymbol = useCallback(
     debounce((newSymbol: string) => {
@@ -198,7 +238,6 @@ const App: React.FC = () => {
     }
   }, [actualSymbol]);
 
-
   useEffect(() => {
     setAnalysisResult(null);
     setError(null);
@@ -207,7 +246,6 @@ const App: React.FC = () => {
   useEffect(() => {
     setLatestChartInfo({ price: null, volume: null });
   }, [actualSymbol, timeframe, dataSource]);
-
 
   useEffect(() => {
     const newThemeDefaultBgColor = theme === 'dark' ? INITIAL_DARK_CHART_PANE_BACKGROUND_COLOR : INITIAL_LIGHT_CHART_PANE_BACKGROUND_COLOR;
@@ -221,7 +259,6 @@ const App: React.FC = () => {
       }
     }
   }, [theme, chartPaneBackgroundColor]);
-
 
   const handleLatestChartInfoUpdate = useCallback((info: LatestChartInfo) => {
     setLatestChartInfo(info);
@@ -239,7 +276,6 @@ const App: React.FC = () => {
     console.log("  - actualSymbol:", actualSymbol); // This should now be consistent
     console.log("  - timeframe:", timeframe);
     console.log("  - isMobile:", isMobile);
-
 
     if (!apiKey) {
       setError("API Key is not configured or is invalid. Analysis cannot proceed. Ensure API_KEY is correctly set in index.html and is not the placeholder value.");
@@ -275,7 +311,7 @@ const App: React.FC = () => {
         apiKey: apiKey
       };
 
-      console.log("Payload for Gemini API (excluding API key and context details):", JSON.stringify({...payload, apiKey: "REDACTED", marketContextPrompt: isMobile ? "Mobile Context" : "Desktop Context"}));
+      console.log("Payload for Gemini API (excluding API key and context details):", JSON.stringify({...payload, apiKey: "REDACTED", marketContextPrompt: "Desktop Context"}));
 
       const result = await analyzeChartWithGemini(payload);
       setAnalysisResult(result);
@@ -300,6 +336,27 @@ const App: React.FC = () => {
     
     setActualSymbol(consistentNewSymbol); // Update symbol for the chart immediately
     setSymbolInput(consistentNewSymbol);  // Update the input field to match
+  };
+
+  const handleMarketTypeChange = (newMarketType: MarketType) => {
+    setMarketType(newMarketType);
+    
+    // Verificar si la fuente de datos actual es compatible con el nuevo tipo de mercado
+    const isCompatible = AVAILABLE_DATA_SOURCES.some(ds => 
+      ds.value === dataSource && ds.marketTypes.includes(newMarketType)
+    );
+    
+    // Si no es compatible, cambiar a una fuente de datos compatible
+    if (!isCompatible) {
+      const newDataSource = getDefaultDataSourceForMarketType(newMarketType);
+      setDataSource(newDataSource);
+      
+      // Actualizar símbolo predeterminado para el nuevo tipo de mercado
+      const newDefaultSymbol = DEFAULT_SYMBOLS[newMarketType];
+      const consistentSymbol = getConsistentSymbolForDataSource(newDefaultSymbol, newDataSource);
+      setActualSymbol(consistentSymbol);
+      setSymbolInput(consistentSymbol);
+    }
   };
 
   return (
@@ -358,7 +415,6 @@ const App: React.FC = () => {
           id="controls-analysis-panel"
           className={`w-full md:w-80 lg:w-[360px] xl:w-[400px] flex-none flex flex-col gap-2 sm:gap-4 overflow-y-auto order-2 md:order-1 ${!isPanelVisible ? 'hidden' : ''}`}
         >
-
           <div className={`${theme === 'dark' ? 'bg-slate-800' : 'bg-white'} p-1 rounded-lg shadow-md flex-shrink-0 order-1 md:order-none`}>
             <ControlsPanel
               symbolInput={symbolInput} // Display this in input
@@ -367,6 +423,8 @@ const App: React.FC = () => {
               setTimeframe={setTimeframe}
               dataSource={dataSource}
               setDataSource={handleDataSourceChange} // Source change handler
+              marketType={marketType}
+              setMarketType={handleMarketTypeChange}
               onAnalyze={handleAnalyze}
               isLoading={isLoading}
               apiKeyPresent={apiKeyPresent}

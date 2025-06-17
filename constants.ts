@@ -389,6 +389,70 @@ export const mapTimeframeToApi = (timeframe: string): string => {
 
 export const DEFAULT_DATA_SOURCE = 'binance';
 export const AVAILABLE_DATA_SOURCES = [
-    { value: 'binance', label: 'Binance Futures' },
-    { value: 'bingx', label: 'BingX Futures' },
+    { value: 'binance', label: 'Binance Futures', marketTypes: ['crypto'] },
+    { value: 'bingx', label: 'BingX Futures', marketTypes: ['crypto'] },
+    { value: 'alphavantage', label: 'Alpha Vantage', marketTypes: ['forex', 'indices', 'commodities', 'stocks'] },
+    { value: 'oanda', label: 'OANDA', marketTypes: ['forex'] },
 ];
+
+export const DEFAULT_MARKET_TYPE = 'crypto';
+export const AVAILABLE_MARKET_TYPES = [
+    { value: 'crypto', label: 'Criptomonedas' },
+    { value: 'forex', label: 'Forex' },
+    { value: 'indices', label: 'Índices' },
+    { value: 'commodities', label: 'Materias Primas' },
+    { value: 'stocks', label: 'Acciones' },
+];
+
+// Símbolos predeterminados por tipo de mercado
+export const DEFAULT_SYMBOLS = {
+    crypto: 'BTCUSDT',
+    forex: 'EUR/USD',
+    indices: 'SPX',
+    commodities: 'XAU',
+    stocks: 'AAPL'
+};
+
+// Correspondencia de timeframes para diferentes proveedores
+export const TIMEFRAME_MAPPINGS = {
+    binance: {
+        '1m': '1m',
+        '5m': '5m',
+        '15m': '15m',
+        '30m': '30m',
+        '1h': '1h',
+        '4h': '4h',
+        '1d': '1d',
+        '1w': '1w'
+    },
+    bingx: {
+        '1m': '1m',
+        '5m': '5m',
+        '15m': '15m',
+        '30m': '30m',
+        '1h': '1h',
+        '4h': '4h',
+        '1d': '1d',
+        '1w': '1w'
+    },
+    alphavantage: {
+        '1m': '1min',
+        '5m': '5min',
+        '15m': '15min',
+        '30m': '30min',
+        '1h': '60min',
+        '4h': '240min',
+        '1d': 'daily',
+        '1w': 'weekly'
+    },
+    oanda: {
+        '1m': 'M1',
+        '5m': 'M5',
+        '15m': 'M15',
+        '30m': 'M30',
+        '1h': 'H1',
+        '4h': 'H4',
+        '1d': 'D',
+        '1w': 'W'
+    }
+};
