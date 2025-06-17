@@ -96,23 +96,61 @@ export interface ExtendedGeminiRequestPayload extends GeminiRequestPayload {
 
 /**
  * Sanitiza una cadena JSON para eliminar caracteres de control que podrían causar errores al parsear.
- * Esta función resuelve específicamente el error "SyntaxError: Bad control character in string literal in JSON"
+ * Esta función resuelve específicamente varios errores comunes de sintaxis JSON.
  */
 const sanitizeJsonString = (jsonStr: string): string => {
-  // Reemplazar caracteres de control (ASCII del 0-31) excepto tabulaciones y saltos de línea comunes
-  // que están permitidos en JSON si están correctamente escapados
+  // Imprimir los primeros 50 caracteres para depuración
+  console.log(`Primeros 50 caracteres antes de sanitizar: "${jsonStr.substring(0, 50)}"`);
+  
   let sanitized = jsonStr;
   
-  // Primero, escapar correctamente las tabulaciones, retornos de carro y saltos de línea
+  // 1. Eliminar espacios en blanco, BOM y otros caracteres invisibles al inicio
+  sanitized = sanitized.trimStart();
+  
+  // 2. Asegurarse de que el JSON comienza con { o [
+  if (sanitized[0] !== '{' && sanitized[0] !== '[') {
+    console.log('El JSON no comienza con { o [, buscando el primer { válido');
+    const validStart = sanitized.indexOf('{');
+    if (validStart > 0) {
+      console.log(`Encontrado { en posición ${validStart}, recortando caracteres iniciales inválidos`);
+      sanitized = sanitized.substring(validStart);
+    }
+  }
+  
+  // 3. Primero, escapar correctamente las tabulaciones, retornos de carro y saltos de línea
   sanitized = sanitized.replace(/\t/g, '\\t');
   sanitized = sanitized.replace(/\r/g, '\\r');
   sanitized = sanitized.replace(/\n/g, '\\n');
   
-  // Luego, eliminar otros caracteres de control que no deberían estar en un string JSON
+  // 4. Eliminar otros caracteres de control que no deberían estar en un string JSON
   sanitized = sanitized.replace(/[\u0000-\u001F]/g, '');
   
-  // También manejar casos donde hay barras invertidas sin escapar
-  sanitized = sanitized.replace(/([^\\])\\"/g, '$1\\\\"');
+  // 5. También manejar casos donde hay barras invertidas sin escapar
+  sanitized = sanitized.replace(/([^\\])\\"/g, '$1\\\"');
+  
+  // 6. Intentar reparar llaves o corchetes desbalanceados (no es perfecto pero ayuda en casos simples)
+  let openBraces = 0;
+  let openBrackets = 0;
+  for (let i = 0; i < sanitized.length; i++) {
+    if (sanitized[i] === '{') openBraces++;
+    else if (sanitized[i] === '}') openBraces--;
+    else if (sanitized[i] === '[') openBrackets++;
+    else if (sanitized[i] === ']') openBrackets--;
+  }
+  
+  // Si faltan llaves o corchetes de cierre, añadirlos
+  while (openBraces > 0) {
+    sanitized += '}';
+    openBraces--;
+  }
+  
+  while (openBrackets > 0) {
+    sanitized += ']';
+    openBrackets--;
+  }
+  
+  // Depuración para ver si el JSON ahora comienza correctamente
+  console.log(`Primeros 50 caracteres después de sanitizar: "${sanitized.substring(0, 50)}"`);
   
   return sanitized;
 };
