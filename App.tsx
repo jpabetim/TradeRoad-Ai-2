@@ -97,9 +97,9 @@ const App: React.FC = () => {
   // Ensure initial symbol is consistent with initial data source
   const consistentInitialSymbol = getConsistentSymbolForDataSource(initialRawSymbol, initialDataSource);
 
-  // Cargar estados desde localStorage o usar valores por defecto, applying consistency for symbol
-  const [dataSource, setDataSource] = useState<DataSource>(initialDataSource);
-  const [actualSymbol, setActualSymbol] = useState<string>(consistentInitialSymbol);
+  // Forzar Binance como proveedor de datos predeterminado para solucionar problemas con BingX
+  const [dataSource, setDataSource] = useState<DataSource>('binance');
+  const [actualSymbol, setActualSymbol] = useState<string>(getConsistentSymbolForDataSource(consistentInitialSymbol, 'binance'));
   const [symbolInput, setSymbolInput] = useState<string>(consistentInitialSymbol);
   const [timeframe, setTimeframe] = useState<string>(() => getLocalStorageItem('traderoad_timeframe', DEFAULT_TIMEFRAME));
   const [theme, setTheme] = useState<Theme>(() => getLocalStorageItem('traderoad_theme', 'dark'));

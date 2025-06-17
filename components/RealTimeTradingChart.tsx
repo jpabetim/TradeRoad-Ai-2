@@ -86,26 +86,15 @@ const PROVIDERS_CONFIG: { binance: BinanceProviderConfig; bingx: BingXProviderCo
     wsBase: 'wss://open-api-swap.bingx.com/swap-market', 
     // Asegurar que el formato del símbolo sea compatible con Binance
     formatSymbol: (s) => s.replace(/[^A-Z0-9]/g, '').toUpperCase(),
-    parseHistorical: (bingxApiResponse: any): CandlestickData[] => {
-      try {
-        if (bingxApiResponse && bingxApiResponse.code === "0" && Array.isArray(bingxApiResponse.data)) {
-          return bingxApiResponse.data.map(k => ({
-            time: k.time / 1000 as UTCTimestamp,
-            open: parseFloat(k.open),
-            high: parseFloat(k.high),
-            low: parseFloat(k.low),
-            close: parseFloat(k.close),
-            volume: parseFloat(k.volume)
-          }));
-        } else {
-          console.error('BingX API error or non-zero code:', bingxApiResponse?.msg, bingxApiResponse);
-          throw new Error(`BingX API error: ${bingxApiResponse?.msg || 'Unknown error'}`);
-        }
-      } catch (e) {
-        console.error('Failed to parse BingX API response:', e);
-        throw new Error('Failed to parse BingX API response');
-      }
-    },
+    // Ya que estamos usando la API de Binance, usar el mismo parseador que el proveedor de Binance
+    parseHistorical: (data) => data.map(k => ({ 
+      time: k[0] / 1000 as UTCTimestamp, 
+      open: parseFloat(k[1]), 
+      high: parseFloat(k[2]), 
+      low: parseFloat(k[3]), 
+      close: parseFloat(k[4]), 
+      volume: parseFloat(k[5]) 
+    })),
     getKlineSubMessage: (symbol, interval) => JSON.stringify({ id: crypto.randomUUID(), reqType: 'sub', dataType: `${symbol}@kline_${interval}` }),
     getTickerSubMessage: (symbol) => JSON.stringify({ id: crypto.randomUUID(), reqType: 'sub', dataType: `${symbol}@trade` }),
     parseKline: (data) => ({ time: data.T / 1000 as UTCTimestamp, open: parseFloat(data.o), high: parseFloat(data.h), low: parseFloat(data.l), close: parseFloat(data.c), volume: parseFloat(data.v) }),
