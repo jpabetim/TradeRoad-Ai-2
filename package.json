@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "mkdir -p public/lib && cp node_modules/ccxt/dist/ccxt.browser.min.js public/lib/",
     "dev": "npm run predev && vite",
-    "prebuild": "mkdir -p public/lib && cp node_modules/ccxt/dist/ccxt.browser.min.js public/lib/",
+    "prebuild": "mkdir -p public/lib && cp node_modules/ccxt/dist/ccxt.browser.min.js public/lib/ && npm install --no-save @vitejs/plugin-react @originjs/vite-plugin-commonjs vite-plugin-node-polyfills",
     "build": "vite build",
     "preview": "vite preview"
   },
