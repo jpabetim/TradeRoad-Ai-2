@@ -3,18 +3,18 @@ services:
     name: traderoad-ai
     env: node
     buildCommand: |
-      # Instalar dependencias del frontend incluyendo dependencias de desarrollo
+      # Instalar todas las dependencias con un flag específico para incluir dev
       npm install --include=dev
       
-      # Explícitamente instalar las dependencias de desarrollo críticas
-      npm install --no-save @vitejs/plugin-react @originjs/vite-plugin-commonjs vite-plugin-node-polyfills
+      # Ejecutar script de configuración para Render
+      node render-build-setup.js
       
       # Copiar CCXT browser a carpeta pública para asegurar compatibilidad con navegador
       echo "Copiando CCXT browser a carpeta pública..."
       mkdir -p ./public/lib
       cp ./node_modules/ccxt/dist/ccxt.browser.min.js ./public/lib/
       
-      # Verificar si existe el script de configuración
+      # Verificar si existe el script de configuración y ejecutarlo
       if [ -f "./scripts/generate-config.cjs" ]; then
         echo "Ejecutando generate-config.cjs"
         node ./scripts/generate-config.cjs
@@ -33,6 +33,17 @@ services:
       # Mostrar todas las dependencias instaladas para diagnóstico
       echo "Listando todas las dependencias instaladas:"
       npm list --depth=0
+      
+      # Mostrar el contenido del archivo vite.config.ts
+      echo "Contenido de vite.config.ts:"
+      cat vite.config.ts
+      echo "-----------------------------------------------------------------"
+      
+      # Verificar la estructura del directorio node_modules
+      echo "Verificando existencia de plugins críticos:"
+      ls -la ./node_modules/@vitejs/plugin-react || echo "Plugin React no encontrado"
+      ls -la ./node_modules/@originjs/vite-plugin-commonjs || echo "Plugin CommonJS no encontrado"
+      ls -la ./node_modules/vite-plugin-node-polyfills || echo "Plugin Node Polyfills no encontrado"
       
       # Construir la aplicación frontend
       npm run build
