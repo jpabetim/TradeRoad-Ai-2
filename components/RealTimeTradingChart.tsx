@@ -162,7 +162,7 @@ const RealTimeTradingChart: React.FC<RealTimeTradingChartProps> = ({
   dataSource, symbol: rawSymbol, timeframe: rawTimeframe, analysisResult,
   onLatestChartInfoUpdate, onChartLoadingStateChange, movingAverages, theme,
   chartPaneBackgroundColor, volumePaneHeight, showAiAnalysisDrawings,
-  wSignalColor, wSignalOpacity, showWSignals
+  wSignalColor, wSignalOpacity, showWSignals, providerOverride, staticData
   // RSI and DeltaZone props removed
 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
