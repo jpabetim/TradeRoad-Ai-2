@@ -81,12 +81,15 @@ app.post('/api/analyze-chart', async (req, res) => {
       return res.status(400).json({ error: 'Prompt is required' });
     }
     
-    // La API key debe estar en variables de entorno del servidor
-    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    // La API key debe estar en variables de entorno del servidor o en la solicitud
+    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || req.body.apiKey;
     
     if (!apiKey) {
-      return res.status(500).json({ error: 'API key not configured on server' });
+      console.error('❌ No API key found in environment or request');
+      return res.status(500).json({ error: 'API key not configured on server or in request' });
     }
+    
+    console.log(`🔍 API Key disponible: ${apiKey ? '✓ SÍ' : '✗ NO'} (longitud: ${apiKey ? apiKey.length : 0})`);
     
     // Cargar la biblioteca de Google Generative AI
     try {
@@ -94,75 +97,112 @@ app.post('/api/analyze-chart', async (req, res) => {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-      console.log(`Sending prompt to Gemini (${prompt.length} chars)`);
+      console.log(`📤 Sending prompt to Gemini (${prompt.length} chars)`);
       
-      // Streaming para obtener la respuesta completa
-      const result = await model.generateContentStream({
+      // Configuración para la generación de contenido
+      const generationConfig = {
+        temperature: 0.2,
+        topK: 32,
+        topP: 0.95,
+        responseMimeType: "application/json",
+        maxOutputTokens: 8192,
+      };
+      
+      console.log('⚙️ Generation config:', JSON.stringify(generationConfig));
+      
+      // Solicitud sin streaming para mayor estabilidad
+      const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.2,
-          topK: 32,
-          topP: 0.95,
-          responseMimeType: "application/json",
-          maxOutputTokens: 8192,
-        },
+        generationConfig
       });
       
-      let fullResponse = '';
-      for await (const chunk of result.stream) {
-        const chunkText = chunk.text();
-        fullResponse += chunkText;
-      }
+      const response = result.response;
+      let fullResponse = response.text();
       
-      console.log(`Gemini response received (${fullResponse.length} chars)`);
+      console.log(`📥 Gemini response received (${fullResponse.length} chars)`);
+      console.log(`🔍 Response preview: ${fullResponse.substring(0, 50)}...`);
       
       // Asegurar que la respuesta sea un JSON válido
       fullResponse = fullResponse.trim();
       
-      // A veces Gemini devuelve el JSON con caracteres adicionales, intentamos limpiar
+      // Limpiar la respuesta para obtener JSON válido
       if (fullResponse.includes('```json')) {
         // Si está envuelto en bloques de código markdown
         fullResponse = fullResponse.replace(/```json\n|```\n|```json|```/g, '');
+        console.log('🧹 Removed markdown code blocks');
       }
       
-      // Log para depuración
-      console.log('Respuesta después de limpieza inicial:', fullResponse.substring(0, 100) + '...');
-      
-      // Verificamos que sea JSON válido intentando parsearlo
+      // Intentar analizar como JSON
+      let jsonData;
       try {
-        JSON.parse(fullResponse);
+        jsonData = JSON.parse(fullResponse);
         console.log('✅ JSON válido confirmado');
       } catch (jsonError) {
         console.warn('⚠️ La respuesta no es JSON válido, aplicando sanitización adicional');
+        console.error(jsonError.message);
         
-        // Si empieza con {{ o termina con }}, eliminamos los caracteres extra
+        // Limpieza adicional
         if (fullResponse.startsWith('{{')) {
           fullResponse = fullResponse.substring(1);
+          console.log('🧹 Removed extra { at start');
         }
         if (fullResponse.endsWith('}}')) {
           fullResponse = fullResponse.substring(0, fullResponse.length - 1);
+          console.log('🧹 Removed extra } at end');
         }
         
         // Eliminar caracteres no válidos para JSON
+        const originalLength = fullResponse.length;
         fullResponse = fullResponse.replace(/[\u0000-\u001F]/g, '');
+        if (originalLength !== fullResponse.length) {
+          console.log(`🧹 Removed ${originalLength - fullResponse.length} control characters`);
+        }
         
         // Un último intento de verificación
         try {
-          JSON.parse(fullResponse);
+          jsonData = JSON.parse(fullResponse);
           console.log('✅ JSON válido después de sanitización');
         } catch (finalJsonError) {
-          console.error('❌ No se pudo convertir a JSON válido');
+          console.error('❌ No se pudo convertir a JSON válido:', finalJsonError.message);
+          
+          // Si todo falla, creamos un JSON básico para evitar errores en el frontend
+          jsonData = {
+            marketStructure: {
+              trend: "undefined",
+              keyLevels: [],
+              description: "Error procesando la respuesta de la API."
+            },
+            tradingSignals: {
+              direction: "neutral",
+              strength: "low",
+              entry: null,
+              stopLoss: null,
+              targets: [],
+              reasoning: "No se pudo generar un análisis por un error de procesamiento."
+            },
+            errors: [finalJsonError.message, "La respuesta de la API no se pudo convertir a JSON válido."]
+          };
+          console.log('⚠️ Using fallback JSON structure');
         }
       }
       
-      res.json({ analysis: fullResponse });
+      // Enviar la respuesta parseada como JSON
+      res.json({ analysis: JSON.stringify(jsonData) });
+      console.log('✅ Response sent to client successfully');
+      
     } catch (genError) {
-      console.error('Error with Gemini API:', genError);
-      res.status(500).json({ error: `AI error: ${genError.message}` });
+      console.error('❌ Error with Gemini API:', genError);
+      res.status(500).json({ 
+        error: `AI error: ${genError.message}`,
+        fullError: genError.toString()
+      });
     }
   } catch (error) {
-    console.error('Server error:', error);
-    res.status(500).json({ error: `Server error: ${error.message}` });
+    console.error('❌ Server error:', error);
+    res.status(500).json({ 
+      error: `Server error: ${error.message}`,
+      fullError: error.toString()
+    });
   }
 });
 
