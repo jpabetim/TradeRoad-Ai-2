@@ -75,10 +75,20 @@ app.post('/api/analyze-chart', async (req, res) => {
         });
 
         const response = result.response;
-        const analysisText = response.text();
+        let analysisText = response.text();
         console.log('✅ [Server] Received response from Gemini.');
+        
+        // Limpiar los delimitadores Markdown si están presentes
+        if (analysisText.startsWith('```json') || analysisText.startsWith('```')) {
+            console.log('⚠️ [Server] Detectado formato Markdown en la respuesta. Limpiando...');
+            // Eliminar cualquier delimitador de apertura de código Markdown
+            analysisText = analysisText.replace(/^```(json)?\s*\n?/, '');
+            // Eliminar cualquier delimitador de cierre de código Markdown
+            analysisText = analysisText.replace(/\n?```\s*$/, '');
+            console.log('✅ [Server] Respuesta limpiada de delimitadores Markdown.');
+        }
 
-        // No es necesario parsear aquí, ya que el frontend espera un string JSON
+        // Enviar respuesta limpia al frontend
         res.json({ analysis: analysisText });
 
     } catch (error) {
