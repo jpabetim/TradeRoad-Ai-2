@@ -161,6 +161,12 @@ export const analyzeChartWithGemini = async (
       prompt: finalPrompt
     });
     
+    // Verificar que response.data y response.data.analysis existan
+    if (!response.data || !response.data.analysis) {
+      console.error('❌ Respuesta del backend incompleta:', response.data);
+      throw new Error('Respuesta del backend incompleta o incorrecta');
+    }
+    
     console.log(`✅ Received response from backend (${response.data.analysis.length} chars)`);
     
     // La respuesta viene como un string JSON que necesitamos parsear

@@ -81,9 +81,11 @@ const PROVIDERS_CONFIG: { binance: BinanceProviderConfig; bingx: BingXProviderCo
   bingx: {
     type: 'bingx',
     name: 'BingX Futures',
-    historicalApi: (symbol, interval) => `/api/bingx-history?symbol=${symbol}&interval=${interval}`,
-    wsBase: 'wss://open-api-swap.bingx.com/swap-market',
-    formatSymbol: (s) => s.toUpperCase(),
+    // Temporalmente usar la misma API de Binance hasta resolver los problemas con el proxy
+    historicalApi: (symbol, interval) => `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=1000`,
+    wsBase: 'wss://open-api-swap.bingx.com/swap-market', 
+    // Asegurar que el formato del símbolo sea compatible con Binance
+    formatSymbol: (s) => s.replace(/[^A-Z0-9]/g, '').toUpperCase(),
     parseHistorical: (bingxApiResponse: any): CandlestickData[] => {
       try {
         if (bingxApiResponse && bingxApiResponse.code === "0" && Array.isArray(bingxApiResponse.data)) {
