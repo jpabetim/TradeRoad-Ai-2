@@ -328,16 +328,42 @@ const RealTimeTradingChart: React.FC<RealTimeTradingChartProps> = ({
 
     // Fetch historical data
     const fetchHistoricalData = async () => {
+      // Verificar si providerConf existe y tiene la función historicalApi
+      if (!providerConf || typeof providerConf.historicalApi !== 'function') {
+        console.error('No se ha configurado correctamente el proveedor de datos');
+        setConnectionStatus('error');
+        onChartLoadingStateChange(false);
+        return;
+      }
+      
       const apiUrl = providerConf.historicalApi(formattedSymbol, apiTimeframe);
+      
+      // Verificar que la URL no esté vacía
+      if (!apiUrl || apiUrl.trim() === '') {
+        console.error(`URL vacía al intentar obtener datos históricos para ${formattedSymbol}. Proveedor: ${providerConf.name || 'desconocido'}`);
+        setConnectionStatus('error');
+        onChartLoadingStateChange(false);
+        return;
+      }
+      
       try {
         console.log(`Fetching historical data from: ${apiUrl}`);
         const response = await fetch(apiUrl);
+        
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`HTTP error! status: ${response.status}, URL: ${apiUrl}, Response: ${errorText}`);
             throw new Error(`HTTP error! status: ${response.status}, Response: ${errorText}`);
         }
+        
         const rawData = await response.json();
+        
+        // Verificar que tenemos un parseador configurado
+        if (typeof providerConf.parseHistorical !== 'function') {
+          console.error('No se ha configurado el parseador de datos históricos');
+          throw new Error('Parseador de datos históricos no configurado');
+        }
+        
         const parsedData = providerConf.parseHistorical(rawData);
 
         // Sort data just in case it's not strictly ordered (important for MAs)
