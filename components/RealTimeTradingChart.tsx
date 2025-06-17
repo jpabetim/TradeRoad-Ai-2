@@ -69,7 +69,7 @@ interface BingXProviderConfig extends BaseProviderConfig {
 
 type CurrentProviderConfig = BinanceProviderConfig | BingXProviderConfig;
 
-const PROVIDERS_CONFIG: { binance: BinanceProviderConfig; bingx: BingXProviderConfig } = {
+const PROVIDERS_CONFIG: { binance: BinanceProviderConfig; bingx: BingXProviderConfig; quodd: any } = {
   binance: {
     type: 'binance',
     name: 'Binance Futures',
@@ -102,6 +102,17 @@ const PROVIDERS_CONFIG: { binance: BinanceProviderConfig; bingx: BingXProviderCo
     getTickerSubMessage: (symbol) => JSON.stringify({ id: crypto.randomUUID(), reqType: 'sub', dataType: `${symbol}@trade` }),
     parseKline: (data) => ({ time: data.T / 1000 as UTCTimestamp, open: parseFloat(data.o), high: parseFloat(data.h), low: parseFloat(data.l), close: parseFloat(data.c), volume: parseFloat(data.v) }),
     parseTicker: (data, currentSymbol, currentProvider) => ({ price: parseFloat(data.p), symbol: currentSymbol, provider: currentProvider })
+  },
+  // Configuración para el proveedor QUODD
+  quodd: {
+    type: 'quodd',
+    name: 'QUODD API',
+    // QUODD no utiliza una URL directa para datos históricos, pero necesitamos proporcionar algo para evitar errores
+    // Esta URL no se usará realmente, ya que los datos se obtienen a través del servicio quoddService.ts
+    historicalApi: () => '',
+    formatSymbol: (s) => s, // No aplicamos transformaciones - QUODD acepta símbolos en formato estándar
+    // Parseador para convertir los datos de QUODD al formato esperado por el gráfico
+    parseHistorical: () => [] // Este parseador no se usará realmente, es solo un placeholder
   }
 };
 
