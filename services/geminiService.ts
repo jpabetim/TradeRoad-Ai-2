@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { GeminiAnalysisResult, GeminiRequestPayload } from "../types";
 import { GEMINI_MODEL_NAME, getFullAnalysisPrompt } from "../constants";
 
@@ -151,10 +151,9 @@ export const analyzeChartWithGemini = async (
 
   const finalPromptWithTimestamp = fullPrompt.replace("AUTO_GENERATED_TIMESTAMP_ISO8601", new Date().toISOString());
 
-  let genAIResponse: GenerateContentResponse | undefined;
-
   try {
-    genAIResponse = await ai.models.generateContent({
+    // CAMBIO IMPORTANTE: Configurar para usar streaming
+    const result = await ai.models.generateContentStream({
       model: GEMINI_MODEL_NAME,
       contents: finalPromptWithTimestamp,
       config: {
@@ -162,8 +161,19 @@ export const analyzeChartWithGemini = async (
       },
     });
 
-    // Comprobación para evitar el error de 'genAIResponse.text' posiblemente 'undefined'
-    let jsonStr = genAIResponse && genAIResponse.text ? genAIResponse.text.trim() : '';
+    // Concatenar todas las partes de la respuesta
+    console.log("Recibiendo respuesta en streaming de Gemini...");
+    let fullResponse = '';
+    for await (const chunk of result) {
+      // Acceder al texto como propiedad y verificar que existe
+      const chunkText = chunk.text ? chunk.text : '';
+      fullResponse += chunkText;
+      // Log opcional para debug: console.log(`Recibido fragmento con ${chunkText.length} caracteres`);
+    }
+    console.log(`Respuesta completa recibida: ${fullResponse.length} caracteres`);
+
+    // Continuar con el procesamiento normal del JSON
+    let jsonStr = fullResponse.trim();
     const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
     const match = jsonStr.match(fenceRegex);
     if (match && match[2]) { 
@@ -171,8 +181,12 @@ export const analyzeChartWithGemini = async (
     }
     
     // Sanitizar caracteres de control antes de analizar el JSON
-    // Esta es una solución para el error "SyntaxError: Bad control character in string literal in JSON"
     jsonStr = sanitizeJsonString(jsonStr);
+    
+    // Logs para verificar que tenemos un JSON válido
+    console.log(`Longitud del JSON procesado: ${jsonStr.length} caracteres`);
+    // Verificar que el JSON termina correctamente (debe terminar con })
+    console.log(`Últimos 50 caracteres: "${jsonStr.substring(jsonStr.length - 50)}"`); 
 
     const parsedData = JSON.parse(jsonStr) as GeminiAnalysisResult;
 
@@ -194,13 +208,12 @@ export const analyzeChartWithGemini = async (
             errorMessage = "Gemini API quota exceeded. Please check your quota or try again later.";
         } else if (error.message.toLowerCase().includes("json")) {
             errorMessage = "Failed to parse the analysis from Gemini. The response was not valid JSON.";
-            if (genAIResponse && typeof genAIResponse.text === 'string') {
-                console.error("Problematic JSON string from Gemini:", genAIResponse.text);
-            }
+            // Ya no necesitamos verificar genAIResponse.text porque ahora usamos streaming
+            console.error("Problematic JSON string from Gemini (partial):", error.parsedJson || "No available JSON preview");
         } else {
             errorMessage = `Gemini API error: ${error.message}`;
         }
-    } else if (typeof error === 'string' && error.includes("```")) {
+    } else if (typeof error === 'string' && error.includes("`")) {
         errorMessage = "Received a malformed response from Gemini (likely unparsed markdown/JSON).";
     } else if (error && typeof error.toString === 'function') { 
         const errorString = error.toString();
