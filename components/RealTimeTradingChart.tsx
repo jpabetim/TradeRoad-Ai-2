@@ -70,7 +70,7 @@ const PROVIDERS_CONFIG: { binance: BinanceProviderConfig; bingx: BingXProviderCo
   binance: {
     type: 'binance',
     name: 'Binance Futures',
-    historicalApi: (symbol, interval) => `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=500`,
+    historicalApi: (symbol, interval) => `/api/bingx-history?symbol=${symbol}&interval=${interval}`,
     wsKline: (symbol, interval) => `wss://fstream.binance.com/ws/${symbol.toLowerCase()}@kline_${interval}`,
     wsTicker: (symbol) => `wss://fstream.binance.com/ws/${symbol.toLowerCase()}@ticker`,
     formatSymbol: (s) => s.replace(/[^A-Z0-9]/g, '').toUpperCase(),

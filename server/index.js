@@ -20,7 +20,7 @@ app.get(['/', '/index.html'], (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
-// Proxy para BingX historical data
+// Proxy para compatibilidad con formato Binance para el frontend
 app.get('/api/bingx-history', async (req, res) => {
   try {
     const { symbol, interval } = req.query;
@@ -31,7 +31,13 @@ app.get('/api/bingx-history', async (req, res) => {
       });
     }
     
-    const apiUrl = `https://open-api.bingx.com/openApi/swap/v2/quote/klines?symbol=${symbol}&interval=${interval}&limit=500`;
+    // Mapeo de intervalos de Binance a BingX si es necesario
+    const bingxInterval = interval.replace('m', 'min').replace('h', 'hour').replace('d', 'day').replace('w', 'week');
+    
+    // BingX necesita el símbolo en otro formato (con guion bajo)
+    const bingxSymbol = symbol.replace('USDT', '_USDT');
+    
+    const apiUrl = `https://open-api.bingx.com/openApi/swap/v2/quote/klines?symbol=${bingxSymbol}&interval=${bingxInterval}&limit=500`;
     console.log(`Proxy request to BingX: ${apiUrl}`);
 
     const response = await fetch(apiUrl);
@@ -40,10 +46,26 @@ app.get('/api/bingx-history', async (req, res) => {
       throw new Error(`BingX API error: ${response.statusText}`);
     }
     
-    const data = await response.json();
-    console.log(`BingX data received: ${data.code === "0" ? "Success" : "Error: " + data.msg}`);
+    const bingxData = await response.json();
+    console.log(`BingX data received: ${bingxData.code === "0" ? "Success" : "Error: " + bingxData.msg}`);
     
-    res.json(data);
+    if (bingxData.code !== "0") {
+      throw new Error(`BingX API returned error: ${bingxData.msg}`);
+    }
+    
+    // Formatear datos de BingX al formato que espera Binance para mantener compatibilidad
+    // Binance: [tiempo, open, high, low, close, volume, ...]
+    const formattedData = bingxData.data.map(candle => [
+      candle.time,           // tiempo
+      parseFloat(candle.open),  // open
+      parseFloat(candle.high),  // high
+      parseFloat(candle.low),   // low
+      parseFloat(candle.close), // close
+      parseFloat(candle.volume) // volume
+    ]);
+    
+    // Devolver en formato compatible con Binance para que el frontend existente funcione
+    res.json(formattedData);
   } catch (error) {
     console.error('Error fetching BingX history:', error);
     res.status(500).json({ error: `Failed to fetch data: ${error.message}` });
@@ -60,19 +82,20 @@ app.post('/api/analyze-chart', async (req, res) => {
     }
     
     // La API key debe estar en variables de entorno del servidor
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
     
     if (!apiKey) {
       return res.status(500).json({ error: 'API key not configured on server' });
     }
     
-    const { GoogleGenerativeAI } = require('@google/genai');
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-    console.log(`Sending prompt to Gemini (${prompt.length} chars)`);
-    
+    // Cargar la biblioteca de Google Generative AI
     try {
+      const { GoogleGenerativeAI } = require('@google/genai');
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      console.log(`Sending prompt to Gemini (${prompt.length} chars)`);
+      
       // Streaming para obtener la respuesta completa
       const result = await model.generateContentStream({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -93,8 +116,44 @@ app.post('/api/analyze-chart', async (req, res) => {
       
       console.log(`Gemini response received (${fullResponse.length} chars)`);
       
-      // Sanitizar y devolver
+      // Asegurar que la respuesta sea un JSON válido
       fullResponse = fullResponse.trim();
+      
+      // A veces Gemini devuelve el JSON con caracteres adicionales, intentamos limpiar
+      if (fullResponse.includes('```json')) {
+        // Si está envuelto en bloques de código markdown
+        fullResponse = fullResponse.replace(/```json\n|```\n|```json|```/g, '');
+      }
+      
+      // Log para depuración
+      console.log('Respuesta después de limpieza inicial:', fullResponse.substring(0, 100) + '...');
+      
+      // Verificamos que sea JSON válido intentando parsearlo
+      try {
+        JSON.parse(fullResponse);
+        console.log('✅ JSON válido confirmado');
+      } catch (jsonError) {
+        console.warn('⚠️ La respuesta no es JSON válido, aplicando sanitización adicional');
+        
+        // Si empieza con {{ o termina con }}, eliminamos los caracteres extra
+        if (fullResponse.startsWith('{{')) {
+          fullResponse = fullResponse.substring(1);
+        }
+        if (fullResponse.endsWith('}}')) {
+          fullResponse = fullResponse.substring(0, fullResponse.length - 1);
+        }
+        
+        // Eliminar caracteres no válidos para JSON
+        fullResponse = fullResponse.replace(/[\u0000-\u001F]/g, '');
+        
+        // Un último intento de verificación
+        try {
+          JSON.parse(fullResponse);
+          console.log('✅ JSON válido después de sanitización');
+        } catch (finalJsonError) {
+          console.error('❌ No se pudo convertir a JSON válido');
+        }
+      }
       
       res.json({ analysis: fullResponse });
     } catch (genError) {
