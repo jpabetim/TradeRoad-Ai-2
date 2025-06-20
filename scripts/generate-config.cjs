@@ -2,82 +2,108 @@
 const fs = require('fs');
 const path = require('path');
 
-console.log('[generate-config.cjs] Starting API key injection script...');
+console.log('[generate-config.cjs] Starting API keys injection script...');
 
-// Define paths
-const projectRoot = path.resolve(__dirname, '..'); // Assumes script is in /scripts
+// --- 1. Define Paths ---
+const projectRoot = path.resolve(__dirname, '..');
 const indexHtmlPath = path.join(projectRoot, 'index.html');
-const publicConfigPath = path.join(projectRoot, 'public', 'config.js');
-
-console.log(`[generate-config.cjs] Project root: ${projectRoot}`);
 console.log(`[generate-config.cjs] Target index.html path: ${indexHtmlPath}`);
-console.log(`[generate-config.cjs] Target public/config.js path: ${publicConfigPath}`);
 
-// Try to get API key from environment variables
-const apiKeyEnvVars = ['API_KEY', 'GEMINI_API_KEY', 'VITE_API_KEY', 'REACT_APP_API_KEY'];
-let envApiKey = '';
+// --- 2. Read API Keys from Environment Variables ---
 
-for (const varName of apiKeyEnvVars) {
-  if (process.env[varName] && process.env[varName].trim() !== '') {
-    envApiKey = process.env[varName].trim();
-    console.log(`[generate-config.cjs] Found API key in environment variable: ${varName}`);
+// Gemini API Key
+const geminiKeyEnvVars = ['API_KEY', 'GEMINI_API_KEY', 'VITE_API_KEY', 'REACT_APP_API_KEY'];
+let geminiApiKey = '';
+
+console.log('[generate-config.cjs] Searching for Gemini API Key in env vars...');
+
+// Mostrar todas las variables de entorno disponibles (solo para desarrollo)
+console.log('[generate-config.cjs] Available env vars:', 
+  Object.keys(process.env)
+    .filter(key => !key.includes('SECRET') && !key.includes('PASSWORD'))
+    .join(', ')
+);
+
+for (const varName of geminiKeyEnvVars) {
+  console.log(`[generate-config.cjs] Checking env var '${varName}': ${process.env[varName] ? 'FOUND' : 'NOT FOUND'}`);
+  if (process.env[varName]) {
+    geminiApiKey = process.env[varName].trim();
+    console.log(`[generate-config.cjs] Found Gemini API key in env var: ${varName}`);
     break;
   }
 }
 
-const apiKeyToInject = envApiKey || 'NO_API_KEY_FOUND_FROM_ENV_VARS';
+// Para desarrollo, usar una clave dummy si no se encuentra
+const geminiKeyToInject = geminiApiKey || 'dummy_gemini_api_key_for_development';
 
-if (apiKeyToInject === 'NO_API_KEY_FOUND_FROM_ENV_VARS') {
-  console.warn('[generate-config.cjs] WARNING: No API key found in any of the expected environment variables.');
-  console.warn('[generate-config.cjs] Injecting placeholder: NO_API_KEY_FOUND_FROM_ENV_VARS');
-} else {
-  // Mask the API key for logging, showing only a small part if it's long enough
-  const maskedKey = apiKeyToInject.length > 8 ? `${apiKeyToInject.substring(0, 4)}...${apiKeyToInject.substring(apiKeyToInject.length - 4)}` : 'MASKED_KEY';
-  console.log(`[generate-config.cjs] API key to inject: ${maskedKey}`);
+// Financial Modeling Prep (FMP) API Key
+const fmpKeyEnvVars = ['FMP_API_KEY', 'VITE_FMP_API_KEY', 'REACT_APP_FMP_API_KEY'];
+let fmpApiKey = '';
+
+console.log('[generate-config.cjs] Searching for FMP API Key in env vars...');
+
+for (const varName of fmpKeyEnvVars) {
+  console.log(`[generate-config.cjs] Checking env var '${varName}': ${process.env[varName] ? 'FOUND' : 'NOT FOUND'}`);
+  if (process.env[varName]) {
+    fmpApiKey = process.env[varName].trim();
+    console.log(`[generate-config.cjs] Found FMP API key in env var: ${varName}`);
+    break;
+  }
 }
 
-// --- 1. Inject into index.html ---
+// Para desarrollo, usar una clave dummy si no se encuentra
+const fmpKeyToInject = fmpApiKey || 'dummy_fmp_api_key_for_development';
+
+// --- 3. Inject Keys into index.html ---
+
 try {
   if (!fs.existsSync(indexHtmlPath)) {
     console.error(`[generate-config.cjs] CRITICAL ERROR: index.html not found at ${indexHtmlPath}`);
-    process.exit(1);
+    process.exit(1); // Exit with error code
   }
-  console.log(`[generate-config.cjs] Reading content from ${indexHtmlPath}...`);
+
   let indexHtmlContent = fs.readFileSync(indexHtmlPath, 'utf8');
-  
-  const placeholder = 'const injectedApiKey = "ENV_API_KEY_PLACEHOLDER";';
-  const replacementString = `const injectedApiKey = "${apiKeyToInject}";`;
+
+  // Define el bloque de configuración que se va a inyectar
+  const configBlock = `
+    <script>
+      window.CONFIG = {
+        API_KEY: "${geminiKeyToInject}",
+        FMP_API_KEY: "${fmpKeyToInject}"
+      };
+      // Log para verificar en el navegador
+      console.log('TradeRoad AI Config:', {
+        geminiKeyStatus: window.CONFIG.API_KEY.startsWith('NO_') ? 'NOT FOUND' : 'OK',
+        fmpKeyStatus: window.CONFIG.FMP_API_KEY.startsWith('NO_') ? 'NOT FOUND' : 'OK',
+      });
+    </script>
+`;
+
+  // Utiliza un placeholder específico en index.html para reemplazarlo
+  const placeholder = '<script id="env-config"></script>';
+  const headEndMarker = '</head>';
 
   if (indexHtmlContent.includes(placeholder)) {
-    indexHtmlContent = indexHtmlContent.replace(placeholder, replacementString);
-    fs.writeFileSync(indexHtmlPath, indexHtmlContent, 'utf8');
-    console.log(`[generate-config.cjs] Successfully injected API key into ${indexHtmlPath}.`);
-    const maskedReplacement = apiKeyToInject.length > 8 ? `${apiKeyToInject.substring(0, 4)}...${apiKeyToInject.substring(apiKeyToInject.length - 4)}` : 'MASKED_KEY';
-    console.log(`[generate-config.cjs] Replaced placeholder: "${placeholder}"`);
-    console.log(`[generate-config.cjs] With: "const injectedApiKey = "${maskedReplacement}";" (masked)`);
+    // Método 1: Reemplaza el placeholder si existe
+    indexHtmlContent = indexHtmlContent.replace(placeholder, configBlock);
+    console.log('[generate-config.cjs] Successfully injected API keys configuration by replacing placeholder.');
+  } else if (indexHtmlContent.includes(headEndMarker)) {
+    // Método 2: Inserta antes del cierre de head si no hay placeholder
+    indexHtmlContent = indexHtmlContent.replace(headEndMarker, configBlock + headEndMarker);
+    console.log('[generate-config.cjs] Successfully injected API keys configuration before </head> tag.');
   } else {
-    console.warn(`[generate-config.cjs] WARNING: Placeholder "${placeholder}" not found in ${indexHtmlPath}.`);
-    console.warn('[generate-config.cjs] API key was NOT injected into index.html. This might be an issue if the placeholder changed or was removed.');
-    // If it's critical that this placeholder is replaced, uncomment the next line to fail the build:
-    // process.exit(1); 
+    // Método 3: Fallback - añadir al principio del archivo
+    indexHtmlContent = configBlock + indexHtmlContent;
+    console.warn(`[generate-config.cjs] WARNING: Could not find appropriate insertion point in ${indexHtmlPath}.`);
+    console.log('[generate-config.cjs] Injected API keys configuration at the beginning of the file.');
   }
+
+  fs.writeFileSync(indexHtmlPath, indexHtmlContent, 'utf8');
+  console.log('[generate-config.cjs] index.html has been updated.');
+
 } catch (error) {
-  console.error(`[generate-config.cjs] CRITICAL ERROR processing ${indexHtmlPath}:`, error);
+  console.error('[generate-config.cjs] An error occurred during the script execution:', error);
   process.exit(1);
 }
 
-// --- 2. Generate public/config.js (fallback/alternative method) ---
-const configJsContent = `window.CONFIG = { API_KEY: "${apiKeyToInject}" };\nconsole.log('[public/config.js] API Key loaded via config.js:', window.CONFIG.API_KEY ? (window.CONFIG.API_KEY.length > 8 ? window.CONFIG.API_KEY.substring(0,4) + '...' + window.CONFIG.API_KEY.substring(window.CONFIG.API_KEY.length - 4) : 'MASKED_KEY') : 'NOT FOUND or Placeholder');`;
-try {
-  const publicDir = path.dirname(publicConfigPath);
-  if (!fs.existsSync(publicDir)) {
-    console.log(`[generate-config.cjs] Creating directory: ${publicDir}`);
-    fs.mkdirSync(publicDir, { recursive: true });
-  }
-  fs.writeFileSync(publicConfigPath, configJsContent, 'utf8');
-  console.log(`[generate-config.cjs] Successfully created/updated ${publicConfigPath} with API key.`);
-} catch (error) {
-  console.error(`[generate-config.cjs] ERROR creating ${publicConfigPath}:`, error);
-}
-
-console.log('[generate-config.cjs] API key injection script finished.');
+console.log('[generate-config.cjs] Script finished successfully.');

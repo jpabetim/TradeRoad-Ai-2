@@ -1,491 +1,231 @@
-import React, { useState, useEffect, useCallback } from 'react';
+// App.tsx
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { DataSource, MarketType, MovingAverageConfig, AnalysisPoint, GeminiAnalysisResult } from './types';
 import ControlsPanel from './components/ControlsPanel';
-import RealTimeTradingChartAdapter from "./components/RealTimeTradingChartAdapter";
-import AnalysisPanel from './components/AnalysisPanel';
+import RealTimeTradingChartAdapter from './components/RealTimeTradingChartAdapter';
+import AiQueryPanel from './components/AiQueryPanel';
+import AutomatedAnalysisDisplay from './components/AutomatedAnalysisDisplay';
 import ApiKeyMessage from './components/ApiKeyMessage';
-import QuoddDemoPage from './components/QuoddDemoPage';
-import { DataSource, MovingAverageConfig, MarketType } from './types';
-import { GeminiAnalysisResult } from './services/geminiService';
-import { analyzeChartWithGemini, ExtendedGeminiRequestPayload } from './services/geminiService';
-import { 
-  DEFAULT_TIMEFRAME, 
-  DEFAULT_DATA_SOURCE, 
-  DEFAULT_MARKET_TYPE, 
-  DEFAULT_SYMBOLS, 
-  AVAILABLE_DATA_SOURCES
+import {
+  DEFAULT_SYMBOLS,
+  DEFAULT_DATA_SOURCE,
+  DEFAULT_MARKET_TYPE,
+  DEFAULT_TIMEFRAME,
+  AVAILABLE_DATA_SOURCES,
+  getAutoAnalysisPrompt,
 } from './constants';
+import { Button } from './components/ui/button'; // Asegúrate de que la ruta es correcta
 
-// Helper for debouncing
 function debounce<T extends (...args: any[]) => void>(func: T, delay: number): (...args: Parameters<T>) => void {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  return function(this: ThisParameterType<T>, ...args: Parameters<T>) {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-    timeoutId = setTimeout(() => {
-      func.apply(this, args);
-    }, delay);
+  return function (this: ThisParameterType<T>, ...args: Parameters<T>) {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => func.apply(this, args), delay);
   };
 }
 
-interface LatestChartInfo {
-  price: number | null;
-  volume?: number | null;
-}
-
+interface LatestChartInfo { price: number | null; volume?: number | null; }
 type Theme = 'dark' | 'light';
-export type IndicatorName = 'volume';
 
 const initialMAs: MovingAverageConfig[] = [
   { id: 'ma1', type: 'EMA', period: 12, color: '#34D399', visible: true },
   { id: 'ma2', type: 'EMA', period: 20, color: '#F472B6', visible: true },
-  { id: 'ma3', type: 'MA', period: 50, color: '#CBD5E1', visible: true },
-  { id: 'ma4', type: 'MA', period: 200, color: '#FF0000', visible: true },
 ];
 
-const INITIAL_DARK_CHART_PANE_BACKGROUND_COLOR = '#18191B';
-const INITIAL_LIGHT_CHART_PANE_BACKGROUND_COLOR = '#FFFFFF';
-const INITIAL_VOLUME_PANE_HEIGHT = 0;
-const INITIAL_W_SIGNAL_COLOR = '#243EA8'; // Blue color for W signals
-const INITIAL_W_SIGNAL_OPACITY = 70; // 0-100 scale
-const INITIAL_SHOW_W_SIGNALS = true;
-
-// Helper para obtener valor de localStorage o un valor por defecto
 const getLocalStorageItem = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window !== 'undefined' && window.localStorage) {
-    const storedValue = localStorage.getItem(key);
-    if (storedValue) {
-      try {
-        return JSON.parse(storedValue) as T;
-      } catch (e) {
-        console.error(`Error parsing localStorage item ${key}:`, e);
-        return defaultValue;
-      }
-    }
-  }
-  return defaultValue;
+  if (typeof window === 'undefined') return defaultValue;
+  const storedValue = localStorage.getItem(key);
+  try {
+    return storedValue ? JSON.parse(storedValue) : defaultValue;
+  } catch (e) { return defaultValue; }
 };
-
-// Helper function to ensure symbol consistency based on data source
-const getConsistentSymbolForDataSource = (symbol: string, ds: DataSource): string => {
-  let consistentSymbol = symbol.toUpperCase(); // Ensure uppercase base
-  if (ds === 'bingx') {
-    // Common conversions from Binance to BingX format
-    if (consistentSymbol === 'BTCUSDT') return 'BTC-USDT';
-    if (consistentSymbol === 'ETHUSDT') return 'ETH-USDT';
-    if (consistentSymbol === 'SOLUSDT') return 'SOL-USDT';
-    // If it's already in BingX format (contains '-', ends with USDT), it's likely fine
-    if (consistentSymbol.includes('-') && consistentSymbol.endsWith('USDT')) return consistentSymbol;
-    // Generic attempt for other symbols like ADAUSDT -> ADA-USDT (use with caution, assumes pattern)
-    if (!consistentSymbol.includes('-') && consistentSymbol.endsWith('USDT') && consistentSymbol.length > 4) {
-      // return consistentSymbol.replace(/USDT$/, '-USDT');
-    }
-  } else if (ds === 'binance') {
-    // Common conversions from BingX to Binance format
-    if (consistentSymbol === 'BTC-USDT') return 'BTCUSDT';
-    if (consistentSymbol === 'ETH-USDT') return 'ETHUSDT';
-    if (consistentSymbol === 'SOL-USDT') return 'SOLUSDT';
-    // If it's already in Binance format (no '-', ends with USDT), it's likely fine
-    if (!consistentSymbol.includes('-') && consistentSymbol.endsWith('USDT')) return consistentSymbol;
-    // Generic attempt for other symbols like ADA-USDT -> ADAUSDT
-    if (consistentSymbol.includes('-') && consistentSymbol.endsWith('USDT')) {
-      // return consistentSymbol.replace('-', '');
-    }
-  }
-  return consistentSymbol; // Return as is if no specific rule applies or already consistent
-};
-
-
-// Tipo para manejar las vistas de la aplicación
-type AppView = 'main' | 'quoddDemo';
 
 const App: React.FC = () => {
-  // Estado para controlar qué vista se muestra
-  const [currentView, setCurrentView] = useState<AppView>('main');
-  
-  // Load initial symbol from localStorage
-  // const initialRawSymbol = getLocalStorageItem('traderoad_actualSymbol', DEFAULT_SYMBOL);
-  // const initialDataSource = getLocalStorageItem('traderoad_dataSource', DEFAULT_DATA_SOURCE);
-  // Estos se cargan directamente en los estados
-
-  // Estado para el tipo de mercado (crypto, forex, indices, commodities, stocks)
-  const [marketType, setMarketType] = useState<MarketType>(() => 
-    getLocalStorageItem('traderoad_marketType', DEFAULT_MARKET_TYPE)
-  );
-  
-  // Usar Binance como proveedor predeterminado para crypto, y Alpha Vantage para otros tipos de mercado
-  const getDefaultDataSourceForMarketType = (mType: MarketType): DataSource => {
-    if (mType === 'crypto') return 'binance';
-    if (mType === 'forex') return 'oanda'; // OANDA es mejor para forex
-    return 'alphavantage'; // Para índices, commodities y stocks
-  };
-  
-  // Determinar la fuente de datos según el tipo de mercado guardado o usar la predeterminada
-  const [dataSource, setDataSource] = useState<DataSource>(() => {
-    const savedDataSource = getLocalStorageItem('traderoad_dataSource', DEFAULT_DATA_SOURCE);
-    // Verificar si la fuente de datos guardada es compatible con el tipo de mercado
-    const marketTypeFromStorage = getLocalStorageItem('traderoad_marketType', DEFAULT_MARKET_TYPE);
-    const isCompatible = AVAILABLE_DATA_SOURCES.some(ds => 
-      ds.value === savedDataSource && ds.marketTypes.includes(marketTypeFromStorage)
-    );
-    return isCompatible ? savedDataSource : getDefaultDataSourceForMarketType(marketTypeFromStorage);
-  });
-  
-  // Obtener símbolo predeterminado según el tipo de mercado
-  const getDefaultSymbolForMarketType = (mType: MarketType) => {
-    return DEFAULT_SYMBOLS[mType] || DEFAULT_SYMBOLS.crypto;
-  };
-  
-  // Guardar el símbolo con formato consistente según el proveedor
-  const [actualSymbol, setActualSymbol] = useState<string>(() => {
-    const savedSymbol = getLocalStorageItem('traderoad_actualSymbol', getDefaultSymbolForMarketType(marketType));
-    return getConsistentSymbolForDataSource(savedSymbol, dataSource);
-  });
-  
-  // Input de símbolo para el control
+  const [marketType, setMarketType] = useState<MarketType>(() => getLocalStorageItem('traderoad_marketType', DEFAULT_MARKET_TYPE));
+  const getDefaultDataSourceForMarketType = (mType: MarketType): DataSource => (mType === 'crypto' ? 'binance' : 'fmp');
+  const [dataSource, setDataSource] = useState<DataSource>(() => getDefaultDataSourceForMarketType(marketType));
+  const getDefaultSymbolForMarketType = (mType: MarketType) => DEFAULT_SYMBOLS[mType] || DEFAULT_SYMBOLS.crypto;
+  const [actualSymbol, setActualSymbol] = useState<string>(() => getLocalStorageItem('traderoad_actualSymbol', getDefaultSymbolForMarketType(marketType)));
   const [symbolInput, setSymbolInput] = useState<string>(actualSymbol);
   const [timeframe, setTimeframe] = useState<string>(() => getLocalStorageItem('traderoad_timeframe', DEFAULT_TIMEFRAME));
   const [theme, setTheme] = useState<Theme>(() => getLocalStorageItem('traderoad_theme', 'dark'));
   const [movingAverages, setMovingAverages] = useState<MovingAverageConfig[]>(() => getLocalStorageItem('traderoad_movingAverages', initialMAs));
-  
-  const initialBgColorBasedOnTheme = theme === 'dark' ? INITIAL_DARK_CHART_PANE_BACKGROUND_COLOR : INITIAL_LIGHT_CHART_PANE_BACKGROUND_COLOR;
-  const [chartPaneBackgroundColor, setChartPaneBackgroundColor] = useState<string>(() =>
-    getLocalStorageItem('traderoad_chartPaneBackgroundColor', initialBgColorBasedOnTheme)
-  );
-
-  const [volumePaneHeight, setVolumePaneHeight] = useState<number>(() => getLocalStorageItem('traderoad_volumePaneHeight', INITIAL_VOLUME_PANE_HEIGHT));
-  const [showAiAnalysisDrawings, setShowAiAnalysisDrawings] = useState<boolean>(() => getLocalStorageItem('traderoad_showAiAnalysisDrawings', true));
   const [isPanelVisible, setIsPanelVisible] = useState<boolean>(() => getLocalStorageItem('traderoad_isPanelVisible', true));
-  const [wSignalColor, setWSignalColor] = useState<string>(() => getLocalStorageItem('traderoad_wSignalColor', INITIAL_W_SIGNAL_COLOR));
-  const [wSignalOpacity, setWSignalOpacity] = useState<number>(() => getLocalStorageItem('traderoad_wSignalOpacity', INITIAL_W_SIGNAL_OPACITY));
-  const [showWSignals, setShowWSignals] = useState<boolean>(() => getLocalStorageItem('traderoad_showWSignals', INITIAL_SHOW_W_SIGNALS));
 
-
-  // API Key state
-  const [apiKey, setApiKey] = useState<string | null>(null);
   const [apiKeyPresent, setApiKeyPresent] = useState<boolean>(false);
-
-  // Otros estados
   const [analysisResult, setAnalysisResult] = useState<GeminiAnalysisResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isChartLoading, setIsChartLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [latestChartInfo, setLatestChartInfo] = useState<LatestChartInfo>({ price: null, volume: null });
-  const [isMobile, setIsMobile] = useState<boolean>(false);
-
-
-  // Guardar estados en localStorage cuando cambian
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.setItem('traderoad_marketType', JSON.stringify(marketType));
-      localStorage.setItem('traderoad_dataSource', JSON.stringify(dataSource));
-      localStorage.setItem('traderoad_actualSymbol', JSON.stringify(actualSymbol)); // actualSymbol is now always consistent
-      localStorage.setItem('traderoad_timeframe', JSON.stringify(timeframe));
-      localStorage.setItem('traderoad_theme', JSON.stringify(theme));
-      localStorage.setItem('traderoad_movingAverages', JSON.stringify(movingAverages));
-      localStorage.setItem('traderoad_chartPaneBackgroundColor', JSON.stringify(chartPaneBackgroundColor));
-      localStorage.setItem('traderoad_volumePaneHeight', JSON.stringify(volumePaneHeight));
-      localStorage.setItem('traderoad_showAiAnalysisDrawings', JSON.stringify(showAiAnalysisDrawings));
-      localStorage.setItem('traderoad_isPanelVisible', JSON.stringify(isPanelVisible));
-      localStorage.setItem('traderoad_wSignalColor', JSON.stringify(wSignalColor));
-      localStorage.setItem('traderoad_wSignalOpacity', JSON.stringify(wSignalOpacity));
-      localStorage.setItem('traderoad_showWSignals', JSON.stringify(showWSignals));
-    }
-  }, [
-    marketType, dataSource, actualSymbol, timeframe, theme, movingAverages,
-    chartPaneBackgroundColor, volumePaneHeight, showAiAnalysisDrawings, isPanelVisible,
-    wSignalColor, wSignalOpacity, showWSignals
-  ]);
+  const [prompt, setPrompt] = useState<string>('');
+  const [analysisDrawings, setAnalysisDrawings] = useState<AnalysisPoint[]>([]);
+  const [priceProjectionPath, setPriceProjectionPath] = useState<number[]>([]);
+  const [showAiAnalysisDrawings, setShowAiAnalysisDrawings] = useState<boolean>(true);
+  const [showIndicators, setShowIndicators] = useState<boolean>(false);
 
   useEffect(() => {
-    // Detect mobile on component mount
-    setIsMobile(typeof navigator !== 'undefined' && /Mobi|Android/i.test(navigator.userAgent));
-
-    let keyFromEnv: string | undefined = undefined;
-    if (typeof window !== 'undefined' && window.process && window.process.env && typeof window.process.env.API_KEY === 'string') {
-      keyFromEnv = window.process.env.API_KEY;
-    }
-
-    if (keyFromEnv && keyFromEnv !== "TU_CLAVE_API_DE_GEMINI_AQUI") {
-      setApiKey(keyFromEnv);
+    if (typeof window.CONFIG?.API_KEY === 'string' && !window.CONFIG.API_KEY.includes('NO_')) {
       setApiKeyPresent(true);
-    } else {
-      setApiKey(null);
-      setApiKeyPresent(false);
-      console.warn("Gemini API Key (API_KEY) is not set or is the placeholder value. AI analysis will be disabled. Ensure it is set on window.process.env.API_KEY in index.html.");
     }
   }, []);
 
-  const debouncedSetActualSymbol = useCallback(
-    debounce((newSymbol: string) => {
-      // When user types, ensure the symbol they typed is made consistent for the current data source
-      const consistentTypedSymbol = getConsistentSymbolForDataSource(newSymbol.trim(), dataSource);
-      setActualSymbol(consistentTypedSymbol);
-      // Also update input field if auto-correction changed it
-      if (consistentTypedSymbol !== newSymbol.trim()) {
-        setSymbolInput(consistentTypedSymbol);
-      }
-    }, 750),
-    [dataSource] // Add dataSource as dependency, so debounced function uses current dataSource
-  );
-
-  const handleSymbolInputChange = (newInputValue: string) => {
-    setSymbolInput(newInputValue.toUpperCase()); // Keep input in uppercase
-    debouncedSetActualSymbol(newInputValue.toUpperCase());
-  };
-
-  // Effect to ensure symbolInput is in sync with actualSymbol if actualSymbol changes programmatically
-  useEffect(() => {
-    if (symbolInput !== actualSymbol) {
-        setSymbolInput(actualSymbol);
-    }
-  }, [actualSymbol]);
-
-  useEffect(() => {
-    setAnalysisResult(null);
-    setError(null);
-  }, [actualSymbol, dataSource]);
-
-  useEffect(() => {
-    setLatestChartInfo({ price: null, volume: null });
-  }, [actualSymbol, timeframe, dataSource]);
-
-  useEffect(() => {
-    const newThemeDefaultBgColor = theme === 'dark' ? INITIAL_DARK_CHART_PANE_BACKGROUND_COLOR : INITIAL_LIGHT_CHART_PANE_BACKGROUND_COLOR;
-    const isCurrentBgThemeDefault =
-      chartPaneBackgroundColor === INITIAL_DARK_CHART_PANE_BACKGROUND_COLOR ||
-      chartPaneBackgroundColor === INITIAL_LIGHT_CHART_PANE_BACKGROUND_COLOR;
-
-    if (isCurrentBgThemeDefault) {
-      if (chartPaneBackgroundColor !== newThemeDefaultBgColor) {
-        setChartPaneBackgroundColor(newThemeDefaultBgColor);
-      }
-    }
-  }, [theme, chartPaneBackgroundColor]);
-
-  const handleLatestChartInfoUpdate = useCallback((info: LatestChartInfo) => {
-    setLatestChartInfo(info);
-  }, []);
-
-  const handleChartLoadingStateChange = useCallback((chartLoading: boolean) => {
-    setIsChartLoading(chartLoading);
-  }, []);
-
-  const handleAnalyze = useCallback(async () => {
-    console.log("Attempting analysis. Current state for analysis:");
-    console.log("  - apiKey (actual value):", apiKey ? "Exists" : "MISSING or Placeholder");
-    console.log("  - isChartLoading:", isChartLoading);
-    console.log("  - latestChartInfo:", JSON.stringify(latestChartInfo));
-    console.log("  - actualSymbol:", actualSymbol); // This should now be consistent
-    console.log("  - timeframe:", timeframe);
-    console.log("  - isMobile:", isMobile);
-
-    if (!apiKey) {
-      setError("API Key is not configured or is invalid. Analysis cannot proceed. Ensure API_KEY is correctly set in index.html and is not the placeholder value.");
-      console.error("Analysis blocked: API Key not available or placeholder.");
+  const handleAnalyze = useCallback(async (isAuto: boolean) => {
+    const userPrompt = prompt.trim();
+    if (!isAuto && !userPrompt) {
+      setError("Por favor, introduce una pregunta para analizar.");
       return;
     }
-    if (isChartLoading || latestChartInfo.price === null || latestChartInfo.price === 0) {
-      setError("Chart data is still loading or current price is unavailable. Please wait and try again.");
-      console.error("Analysis blocked: Chart loading or price unavailable.", { isChartLoading, price: latestChartInfo.price });
+    if (isChartLoading || !latestChartInfo.price) {
+      setError("Espera a que los datos del gráfico carguen completamente.");
       return;
     }
-
     setIsLoading(true);
     setError(null);
-    setAnalysisResult(null);
 
     try {
-      // Display symbol for Gemini can be formatted nicely (e.g., with '/')
-      // The `actualSymbol` is already in the correct format for the API (e.g. BTCUSDT or BTC-USDT)
-      const displaySymbolForAI = actualSymbol.includes('-')
-        ? actualSymbol.replace('-', '/') // For BingX symbols like BTC-USDT -> BTC/USDT
-        : (actualSymbol.endsWith('USDT') ? actualSymbol.replace(/USDT$/, '/USDT') : actualSymbol); // For Binance symbols
+      const finalPrompt = isAuto ? getAutoAnalysisPrompt(actualSymbol, timeframe, latestChartInfo.price, '') : userPrompt;
+      const payload = { symbol: actualSymbol, timeframe, currentPrice: latestChartInfo.price, prompt: finalPrompt, latestVolume: latestChartInfo.volume };
 
-      const currentPrice = latestChartInfo.price;
-      const analysisTimeframe = timeframe;
+      const response = await fetch('/api/analyze-chart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-      const payload: ExtendedGeminiRequestPayload = {
-        symbol: displaySymbolForAI, // Use the display-friendly version for the AI prompt
-        timeframe: analysisTimeframe.toUpperCase(),
-        currentPrice,
-        marketContextPrompt: "Context will be generated by getFullAnalysisPrompt",
-        latestVolume: latestChartInfo.volume,
-        apiKey: apiKey
-      };
+      if (!response.ok) throw new Error((await response.json()).error || 'Error en el servidor de análisis');
 
-      console.log("Payload for Gemini API (excluding API key and context details):", JSON.stringify({...payload, apiKey: "REDACTED", marketContextPrompt: "Desktop Context"}));
-
-      const result = await analyzeChartWithGemini(payload);
+      const result: GeminiAnalysisResult = await response.json();
       setAnalysisResult(result);
-    } catch (err) {
-      console.error("Full analysis error in App.tsx:", err);
-      let userErrorMessage = "An unknown error occurred during analysis.";
-      if (err instanceof Error) {
-        userErrorMessage = err.message;
-      }
-      setError(`${userErrorMessage} --- If using a mobile device, please open your browser's developer console, attempt the analysis again, and report any errors shown there.`);
+      if (result.puntos_clave_grafico) setAnalysisDrawings(result.puntos_clave_grafico);
+      if (result.proyeccion_precio_visual?.path) setPriceProjectionPath(result.proyeccion_precio_visual.path);
+
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setIsLoading(false);
     }
-  }, [apiKey, actualSymbol, timeframe, latestChartInfo, isChartLoading, isMobile]);
+  }, [actualSymbol, timeframe, isChartLoading, latestChartInfo, prompt]);
 
-  const handleDataSourceChange = (newDataSource: DataSource) => {
-    setDataSource(newDataSource); // Set the new data source
-    // Ensure the current symbol (from symbolInput or actualSymbol) is made consistent
-    // for the new data source, and update both actualSymbol and symbolInput.
-    const symbolToConvert = symbolInput || actualSymbol; // Prefer input if user was typing
-    const consistentNewSymbol = getConsistentSymbolForDataSource(symbolToConvert, newDataSource);
-    
-    setActualSymbol(consistentNewSymbol); // Update symbol for the chart immediately
-    setSymbolInput(consistentNewSymbol);  // Update the input field to match
-  };
+  useEffect(() => {
+    if (actualSymbol && timeframe && !isChartLoading) {
+      handleAnalyze(true);
+    }
+  }, [actualSymbol, timeframe, isChartLoading]);
 
   const handleMarketTypeChange = (newMarketType: MarketType) => {
     setMarketType(newMarketType);
-    
-    // Verificar si la fuente de datos actual es compatible con el nuevo tipo de mercado
-    const isCompatible = AVAILABLE_DATA_SOURCES.some(ds => 
-      ds.value === dataSource && ds.marketTypes.includes(newMarketType)
-    );
-    
-    // Si no es compatible, cambiar a una fuente de datos compatible
-    if (!isCompatible) {
-      const newDataSource = getDefaultDataSourceForMarketType(newMarketType);
-      setDataSource(newDataSource);
-      
-      // Actualizar símbolo predeterminado para el nuevo tipo de mercado
-      const newDefaultSymbol = DEFAULT_SYMBOLS[newMarketType];
-      const consistentSymbol = getConsistentSymbolForDataSource(newDefaultSymbol, newDataSource);
-      setActualSymbol(consistentSymbol);
-      setSymbolInput(consistentSymbol);
-    }
+    const newDataSource = getDefaultDataSourceForMarketType(newMarketType);
+    const newSymbol = getDefaultSymbolForMarketType(newMarketType);
+    setDataSource(newDataSource);
+    setActualSymbol(newSymbol);
+    setSymbolInput(newSymbol);
   };
+
+  const toggleAiAnalysisDrawings = useCallback(() => {
+    setShowAiAnalysisDrawings(prev => !prev);
+  }, []);
+
+  const toggleIndicators = useCallback(() => {
+    setShowIndicators(prev => !prev);
+  }, []);
+
+  const chartAdapterProps = useMemo(() => ({
+    dataSource, 
+    symbol: actualSymbol, 
+    timeframe, 
+    theme, 
+    movingAverages,
+    onLatestInfo: setLatestChartInfo, 
+    onChartLoading: setIsChartLoading,
+    showAiAnalysisDrawings,
+    analysisDrawings, 
+    priceProjectionPath,
+    chartPaneBackgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+    volumePaneHeight: 0.2,
+    showWSignals: false,
+    wSignalColor: 'rgba(255, 235, 59, 1)',
+    wSignalOpacity: 0.7,
+    onAnalyzeClick: () => handleAnalyze(false),
+    onAutoAnalyzeClick: () => handleAnalyze(true),
+    showIndicators
+  }), [dataSource, actualSymbol, timeframe, theme, movingAverages, analysisDrawings, priceProjectionPath, handleAnalyze, showAiAnalysisDrawings, showIndicators]);
 
   return (
     <div className={`flex flex-col h-screen antialiased ${theme === 'dark' ? 'bg-slate-900 text-slate-100' : 'bg-gray-100 text-gray-900'}`}>
-      <header className={`p-2 sm:p-3 shadow-md flex justify-between items-center ${theme === 'dark' ? 'bg-slate-800' : 'bg-white border-b border-gray-200'}`}>
-        <div className="flex items-center gap-4">
-          <h1 className={`text-lg sm:text-xl font-bold ${theme === 'dark' ? 'text-sky-400' : 'text-sky-600'}`}>TradeRoad</h1>
-          <nav className="flex items-center gap-3">
-            <button 
-              onClick={() => setCurrentView('main')}
-              className={`px-3 py-1 text-sm rounded-md transition-colors ${currentView === 'main' ? 
-                (theme === 'dark' ? 'bg-sky-600 text-white' : 'bg-sky-500 text-white') : 
-                (theme === 'dark' ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-700')}`}
-            >
-              Principal
-            </button>
-            <button 
-              onClick={() => setCurrentView('quoddDemo')}
-              className={`px-3 py-1 text-sm rounded-md transition-colors ${currentView === 'quoddDemo' ? 
-                (theme === 'dark' ? 'bg-sky-600 text-white' : 'bg-sky-500 text-white') : 
-                (theme === 'dark' ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-700')}`}
-            >
-              QUODD Demo
-            </button>
-          </nav>
+      <header className={`p-2 sm:p-3 shadow-md flex flex-wrap items-center gap-4 ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
+        <h1 className="text-lg sm:text-xl font-bold text-sky-500 whitespace-nowrap">TradeRoad AI</h1>
+        <div className="flex-grow min-w-[300px]">
+          <AiQueryPanel
+            prompt={prompt}
+            onPromptChange={setPrompt}
+            onAnalyzeClick={() => handleAnalyze(false)}
+            onAutoAnalyzeClick={() => handleAnalyze(true)}
+            isLoading={isLoading}
+            theme={theme}
+          />
         </div>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            onClick={() => setIsPanelVisible(!isPanelVisible)}
-            aria-label={isPanelVisible ? 'Hide controls and analysis panel' : 'Show controls and analysis panel'}
-            aria-expanded={isPanelVisible}
-            aria-controls="controls-analysis-panel"
-            className={`p-1 sm:p-2 rounded text-xs transition-colors ${theme === 'dark' ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+        <div className="flex items-center gap-2">
+          <Button 
+            onClick={toggleAiAnalysisDrawings}
+            variant="outline"
+            size="sm"
+            className={`${showAiAnalysisDrawings ? 'bg-amber-600 hover:bg-amber-700 text-white border-amber-500' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'}`}
           >
-            {isPanelVisible ? 'Hide Panel' : 'Show Panel'}
-          </button>
-          <button
-            onClick={() => {
-              const newTheme = theme === 'light' ? 'dark' : 'light';
-              setTheme(newTheme);
-            }}
-            aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
-            className={`p-1 sm:p-2 rounded text-xs transition-colors ${theme === 'dark' ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+            {showAiAnalysisDrawings ? 'Ocultar Dibujos' : 'Mostrar Dibujos'}
+          </Button>
+          <Button 
+            onClick={toggleIndicators}
+            variant="outline"
+            size="sm"
+            className={`${showIndicators ? 'bg-violet-600 hover:bg-violet-700 text-white border-violet-500' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'}`}
           >
-            {theme === 'light' ? '🌙 Dark' : '☀️ Light'} Mode
-          </button>
+            Indicadores {showIndicators ? '▲' : '▼'}
+          </Button>
+          <Button 
+            onClick={() => setIsPanelVisible(!isPanelVisible)} 
+            variant="outline" 
+            size="sm"
+            className={`${theme === 'dark' ? 'text-white hover:text-white bg-slate-700 hover:bg-slate-600' : 'text-slate-800 hover:text-slate-900 bg-white hover:bg-slate-200'}`}
+          >
+            {isPanelVisible ? 'Ocultar Panel' : 'Mostrar Panel'}
+          </Button>
+          <Button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} variant="outline" size="sm">
+            {theme === 'light' ? '🌙' : '☀️'}
+          </Button>
         </div>
       </header>
 
-      <ApiKeyMessage apiKeyPresent={apiKeyPresent} />
+      {!apiKeyPresent && <ApiKeyMessage />}
 
-      {currentView === 'quoddDemo' ? (
-        <main className="flex-grow overflow-y-auto">
-          <QuoddDemoPage />
-        </main>
-      ) : (
-        <main className="flex-grow flex flex-col md:flex-row p-2 sm:p-4 gap-2 sm:gap-4 overflow-y-auto">
-          <div className={`w-full flex-1 flex flex-col gap-2 sm:gap-4 overflow-hidden order-1 ${isPanelVisible ? 'md:order-2' : 'md:order-1'}`}>
-            <div className={`flex-grow min-h-[300px] sm:min-h-[400px] md:min-h-0 shadow-lg rounded-lg overflow-hidden ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
-              <RealTimeTradingChartAdapter
-                dataSource={dataSource}
-                symbol={actualSymbol} // This is now consistently formatted
-                timeframe={timeframe}
-                analysisResult={analysisResult}
-                onLatestChartInfoUpdate={handleLatestChartInfoUpdate}
-                onChartLoadingStateChange={handleChartLoadingStateChange}
-                movingAverages={movingAverages}
-                theme={theme}
-                chartPaneBackgroundColor={chartPaneBackgroundColor}
-                volumePaneHeight={volumePaneHeight}
-                showAiAnalysisDrawings={showAiAnalysisDrawings}
-                wSignalColor={wSignalColor}
-                wSignalOpacity={wSignalOpacity / 100} // Pass opacity as 0-1 for chart
-                showWSignals={showWSignals}
-              />
-            </div>
-          </div>
-
-          <div
-            id="controls-analysis-panel"
-            className={`w-full md:w-80 lg:w-[360px] xl:w-[400px] flex-none flex flex-col gap-2 sm:gap-4 overflow-y-auto order-2 md:order-1 ${!isPanelVisible ? 'hidden' : ''}`}
-          >
-            <div className={`${theme === 'dark' ? 'bg-slate-800' : 'bg-white'} p-1 rounded-lg shadow-md flex-shrink-0 order-1 md:order-none`}>
+      <main className="flex-grow flex flex-col md:flex-row overflow-hidden">
+        {isPanelVisible && (
+          <aside className="w-full md:w-1/3 md:max-w-sm lg:max-w-md flex flex-col h-1/2 md:h-full">
+            <div className="p-4 overflow-y-auto space-y-4">
               <ControlsPanel
-                symbolInput={symbolInput} // Display this in input
-                setSymbolInput={handleSymbolInputChange} // User typing handler
-                timeframe={timeframe}
-                setTimeframe={setTimeframe}
-                dataSource={dataSource}
-                setDataSource={handleDataSourceChange} // Source change handler
                 marketType={marketType}
-                setMarketType={handleMarketTypeChange}
-                onAnalyze={handleAnalyze}
-                isLoading={isLoading}
-                apiKeyPresent={apiKeyPresent}
-                isChartLoading={isChartLoading}
-                chartPaneBackgroundColor={chartPaneBackgroundColor}
-                setChartPaneBackgroundColor={setChartPaneBackgroundColor}
-                volumePaneHeight={volumePaneHeight}
-                setVolumePaneHeight={setVolumePaneHeight}
-                showAiAnalysisDrawings={showAiAnalysisDrawings}
-                setShowAiAnalysisDrawings={setShowAiAnalysisDrawings}
-                movingAverages={movingAverages}
-                setMovingAverages={setMovingAverages}
-                wSignalColor={wSignalColor}
-                setWSignalColor={setWSignalColor}
-                wSignalOpacity={wSignalOpacity}
-                setWSignalOpacity={setWSignalOpacity}
-                showWSignals={showWSignals}
-                setShowWSignals={setShowWSignals}
+                onMarketTypeChange={handleMarketTypeChange}
+                dataSource={dataSource}
+                onDataSourceChange={setDataSource}
+                symbolInput={symbolInput}
+                onSymbolInputChange={setSymbolInput}
+                onSymbolSubmit={() => setActualSymbol(symbolInput.toUpperCase())}
+                timeframe={timeframe}
+                onTimeframeChange={setTimeframe}
+                theme={theme}
+                onThemeChange={setTheme}
+                actualSymbol={actualSymbol}
+                setActualSymbol={setActualSymbol}
               />
+              <AutomatedAnalysisDisplay analysisResult={analysisResult} error={error} isLoading={isLoading} />
             </div>
-
-            <div className={`${theme === 'dark' ? 'bg-slate-800' : 'bg-white'} rounded-lg shadow-md order-2 md:order-none`}>
-              <AnalysisPanel
-                analysisResult={analysisResult}
-                isLoading={isLoading && !analysisResult && !error}
-                error={error}
-                isMobile={isMobile}
-              />
-            </div>
-          </div>
-        </main>
-      )}
+          </aside>
+        )}
+        <div className="flex-grow flex flex-col min-h-0">
+          <RealTimeTradingChartAdapter {...chartAdapterProps} />
+        </div>
+      </main>
     </div>
   );
 };
-
 export default App;

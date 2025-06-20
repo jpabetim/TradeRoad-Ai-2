@@ -8,6 +8,8 @@ interface AnalysisPanelProps {
   isLoading: boolean;
   error: string | null;
   isMobile: boolean; // New prop for mobile detection
+  prompt: string;
+  onPromptChange: (newPrompt: string) => void;
 }
 
 const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -105,7 +107,7 @@ const FibonacciAnalysisDisplay: React.FC<{ fiboAnalysis: FibonacciAnalysis | und
 };
 
 
-const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ analysisResult, isLoading, error, isMobile }) => {
+const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ analysisResult: rawAnalysisResult, isLoading, error, isMobile, prompt, onPromptChange }) => {
   
   const StatusDisplayWrapper: React.FC<{ title: string; children: React.ReactNode; titleColor?: string }> = ({ title, children, titleColor = "text-sky-400" }) => (
     <div className="p-3 sm:p-4 bg-slate-800 rounded-lg shadow h-full"> {/* h-full here is okay as it fills its parent if parent has fixed height, or natural height */}
@@ -130,13 +132,27 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ analysisResult, isLoading
     );
   }
 
-  if (!analysisResult) {
+  if (!rawAnalysisResult && !isLoading && !error) {
     return (
       <StatusDisplayWrapper title="AI Analysis">
-        Click "Analyze Chart" to get AI insights.
+        <textarea
+          className="w-full p-2 text-sm bg-slate-700 text-slate-200 rounded-md border border-slate-600 focus:ring-sky-500 focus:border-sky-500"
+          rows={3}
+          placeholder="Haz una pregunta sobre el gráfico, ej: '¿Cuál es la estructura actual del mercado?' o 'Identifica los niveles clave de soporte y resistencia.'"
+          value={prompt}
+          onChange={(e) => onPromptChange(e.target.value)}
+          disabled={isLoading}
+        />
+        <p className="text-xs text-slate-400 mt-2">
+          Haz clic en "Analizar" encima del gráfico para obtener análisis de IA basado en tu pregunta.
+        </p>
       </StatusDisplayWrapper>
     );
   }
+  
+  // Asegurarse de que tenemos un analysisResult no nulo para el resto del componente
+  // Esta asignación con la aserción `!` le dice a TypeScript que sabemos que ya no es null
+  const analysisResult = rawAnalysisResult!;
 
   const primaryScenario = analysisResult.escenarios_probables?.find(s => s.probabilidad === 'alta') || analysisResult.escenarios_probables?.[0];
   const alternativeScenarios = analysisResult.escenarios_probables?.filter(s => s !== primaryScenario) || [];

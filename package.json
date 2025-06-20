@@ -4,32 +4,42 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "predev": "mkdir -p public/lib && cp node_modules/ccxt/dist/ccxt.browser.min.js public/lib/",
+    "predev": "mkdir -p public/lib && node ./scripts/generate-config.cjs",
     "dev": "npm run predev && vite",
-    "prebuild": "mkdir -p public/lib && cp node_modules/ccxt/dist/ccxt.browser.min.js public/lib/ && npm install --no-save @vitejs/plugin-react @originjs/vite-plugin-commonjs vite-plugin-node-polyfills",
+    "prebuild": "mkdir -p public/lib && node ./scripts/generate-config.cjs && npm install --no-save @vitejs/plugin-react@4.5.2 @originjs/vite-plugin-commonjs@1.0.3 vite-plugin-node-polyfills@0.23.0 autoprefixer@10.4.16 tailwindcss@3.4.1 postcss@8.4.35",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@google/genai": "^1.4.0",
     "@google/generative-ai": "^0.24.1",
-    "@vitejs/plugin-react": "^4.5.2",
     "@originjs/vite-plugin-commonjs": "^1.0.3",
-    "vite-plugin-node-polyfills": "^0.23.0",
+    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-select": "^2.2.5",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@vitejs/plugin-react": "^4.5.2",
     "axios": "^1.10.0",
-    "ccxt": "^4.4.89",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "dotenv": "^16.5.0",
     "lightweight-charts": "^4.2.0",
+    "lucide-react": "^0.517.0",
     "pako": "^2.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "recharts": "^2.15.3",
-    "vite": "^6.2.0"
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss-animate": "^1.0.7",
+    "vite": "^6.2.0",
+    "vite-plugin-node-polyfills": "^0.23.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
     "typescript": "~5.7.2"
   }
 }

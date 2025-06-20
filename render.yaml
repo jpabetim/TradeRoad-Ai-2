@@ -5,19 +5,23 @@ services:
     buildCommand: |
       # Instalar todas las dependencias con un flag específico para incluir dev
       npm install --include=dev
+
+      # Instalar específicamente las dependencias CSS requeridas
+      npm install --no-save autoprefixer@^10.4.21 tailwindcss@^3.4.17 postcss@^8.5.6
       
       # Ejecutar script de configuración para Render
       node render-build-setup.js
       
-      # Copiar CCXT browser a carpeta pública para asegurar compatibilidad con navegador
-      echo "Copiando CCXT browser a carpeta pública..."
+      # Crear carpeta pública para archivos estáticos
+      echo "Creando directorio público para archivos estáticos..."
       mkdir -p ./public/lib
-      cp ./node_modules/ccxt/dist/ccxt.browser.min.js ./public/lib/
       
       # Verificar si existe el script de configuración y ejecutarlo
-      if [ -f "./scripts/generate-config.cjs" ]; then
+      echo "Verificando ubicación del script..."
+ls -la ./scripts/
+if [ -f "./scripts/generate-config.cjs" ]; then
         echo "Ejecutando generate-config.cjs"
-        node ./scripts/generate-config.cjs
+        node "$(pwd)/scripts/generate-config.cjs"
       elif [ -f "./scripts/generate-config.js" ]; then
         echo "Ejecutando generate-config.js"
         node ./scripts/generate-config.js

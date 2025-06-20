@@ -1,6 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App.tsx'; // Changed from './App'
+import App from './App.tsx';
+
+// Importar CSS correctamente
+import './index.css'; // Importamos el archivo index.css en la raíz
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

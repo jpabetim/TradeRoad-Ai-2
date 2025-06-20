@@ -24,7 +24,7 @@ export type { GeminiAnalysisResult };
 
 // Extendemos la interfaz del payload de Gemini para incluir volumen y (opcionalmente) API key
 export interface ExtendedGeminiRequestPayload extends GeminiRequestPayload {
-  latestVolume?: number | null;
+  latestVolume?: number; // Eliminamos 'null' para que sea compatible con GeminiRequestPayload
   apiKey?: string; // API key opcional ya que ahora se maneja en el backend
 }
 

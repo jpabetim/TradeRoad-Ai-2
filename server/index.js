@@ -1,121 +1,90 @@
-const express = require('express');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const cors = require('cors');
-const path = require('path');
+// server/index.js
 
-console.log('✅ [Server] Initializing...');
+// --- USAREMOS IMPORT EN LUGAR DE REQUIRE ---
+import express from 'express';
+import cors from 'cors';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import fetch from 'node-fetch';
+
+console.log('✅ [Server] Initializing API server...');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// --- Middleware ---
-
-// 1. CORS: Habilita peticiones desde otros orígenes
-const allowedOrigins = [
-    'http://localhost:5173', // Desarrollo local
-    'https://traderoad-ai.onrender.com' // Tu URL de producción
-];
-app.use(cors({
-    origin: function (origin, callback) {
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    }
-}));
-console.log('✅ [Server] CORS configured.');
-
-// 2. JSON Parser: Para poder leer el body de las peticiones POST
-app.use(express.json());
-console.log('✅ [Server] JSON parser enabled.');
-
-// 3. Static Files: Sirve la aplicación de React/Vite ya construida
-const staticFilesPath = path.join(__dirname, '..', 'dist');
-app.use(express.static(staticFilesPath));
-console.log(`✅ [Server] Serving static files from: ${staticFilesPath}`);
+// --- Middlewares ---
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+console.log('✅ [Server] Middlewares configured.');
 
 // --- API Endpoints ---
-
-// Endpoint de salud para verificar que el servidor está vivo
 app.get('/api/health', (req, res) => {
-    console.log('ጤ [Server] GET /api/health');
-    res.status(200).json({ status: 'ok', message: 'Server is healthy and running' });
+    res.status(200).json({ status: 'ok' });
 });
 
-// Endpoint principal para el análisis con Gemini
-app.post('/api/analyze-chart', async (req, res) => {
-    console.log('🧠 [Server] POST /api/analyze-chart');
+app.get('/api/proxy', async (req, res) => {
+    const targetUrl = req.query.url;
+    if (!targetUrl || typeof targetUrl !== 'string') {
+        return res.status(400).json({ error: 'URL parameter is required' });
+    }
+
     try {
-        const { prompt } = req.body;
-        const apiKey = process.env.GEMINI_API_KEY;
-
-        if (!prompt) {
-            console.error('❌ [Server] Error: Prompt is required.');
-            return res.status(400).json({ error: 'Prompt is required' });
-        }
-        if (!apiKey) {
-            console.error('❌ [Server] Error: GEMINI_API_KEY not configured on server.');
-            return res.status(500).json({ error: 'API key not configured on server' });
+        const requestHeaders = { 'User-Agent': 'TradeRoad-AI/1.0' };
+        if (String(targetUrl).includes('bingx.com') && process.env.BINGX_API_KEY) {
+            requestHeaders['X-BX-APIKEY'] = process.env.BINGX_API_KEY;
+        } else if (String(targetUrl).includes('binance.com') && process.env.BINANCE_API_KEY) {
+            requestHeaders['X-MBX-APIKEY'] = process.env.BINANCE_API_KEY;
         }
 
-        console.log('✔️ [Server] Prompt and API Key are present. Calling Gemini...');
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-        const generationConfig = { 
-            temperature: 0.2, 
-            topK: 32, 
-            topP: 0.95, 
-            maxOutputTokens: 8192 
-        };
-
-        const result = await model.generateContent({ 
-            contents: [{ role: 'user', parts: [{ text: prompt }] }], 
-            generationConfig 
-        });
-
-        const response = result.response;
-        let analysisText = response.text();
-        console.log('✅ [Server] Received response from Gemini.');
-        
-        // Limpiar los delimitadores Markdown si están presentes
-        if (analysisText.startsWith('```json') || analysisText.startsWith('```')) {
-            console.log('⚠️ [Server] Detectado formato Markdown en la respuesta. Limpiando...');
-            // Eliminar cualquier delimitador de apertura de código Markdown
-            analysisText = analysisText.replace(/^```(json)?\s*\n?/, '');
-            // Eliminar cualquier delimitador de cierre de código Markdown
-            analysisText = analysisText.replace(/\n?```\s*$/, '');
-            console.log('✅ [Server] Respuesta limpiada de delimitadores Markdown.');
+        const apiResponse = await fetch(targetUrl, { headers: requestHeaders });
+        if (!apiResponse.ok) {
+            const errorBody = await apiResponse.text();
+            throw new Error(`External API Error (${apiResponse.status}): ${errorBody}`);
         }
-
-        // Enviar respuesta limpia al frontend
-        res.json({ analysis: analysisText });
-
+        const data = await apiResponse.json();
+        res.status(200).json(data);
     } catch (error) {
-        console.error('❌ [Server] Critical error in /api/analyze-chart:', error);
-        res.status(500).json({ 
-            error: 'An unexpected error occurred on the server.',
-            details: error.message,
-            // Devuelve un objeto JSON válido en el campo 'analysis' para evitar errores de parseo en el frontend
-            analysis: JSON.stringify({ error: true, message: 'Failed to get analysis from Gemini.', details: error.message })
-        });
+        console.error('❌ [Proxy] Error:', error);
+        res.status(500).json({ error: 'Proxy server failed', details: error.message });
     }
 });
 
-// --- Fallback Route ---
+app.post('/api/analyze-chart', async (req, res) => {
+    try {
+        const { symbol, timeframe, currentPrice, prompt } = req.body;
+        if (!symbol || !timeframe || !prompt) {
+            return res.status(400).json({ error: 'Faltan campos obligatorios.' });
+        }
 
-// Redirige todas las demás peticiones GET al index.html de React para que el enrutador del lado del cliente funcione
-app.get('*', (req, res) => {
-    console.log(`➡️ [Server] Fallback: Serving index.html for route: ${req.path}`);
-    res.sendFile(path.join(staticFilesPath, 'index.html'));
+        const geminiApiKey = process.env.GEMINI_API_KEY;
+        if (!geminiApiKey) {
+            return res.status(500).json({ error: 'Error de configuración: GEMINI_API_KEY no encontrada.' });
+        }
+
+        const genAI = new GoogleGenerativeAI(geminiApiKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const textResponse = response.text();
+
+        const jsonMatch = textResponse.match(/```json\n([\s\S]*?)\n```/);
+        if (!jsonMatch || !jsonMatch[1]) {
+            return res.status(500).json({ error: 'La respuesta de la IA no tenía un formato JSON válido.' });
+        }
+
+        const analysisResult = JSON.parse(jsonMatch[1]);
+        res.status(200).json(analysisResult);
+    } catch (error) {
+        console.error('❌ [Analyze] Critical error:', error);
+        res.status(500).json({ error: 'Error inesperado en el servidor de análisis.', details: error.message });
+    }
 });
 
-// --- Server Start ---
-
+// --- Arranque del Servidor ---
 app.listen(PORT, () => {
     console.log('============================================');
-    console.log(`🚀 [Server] Express server listening on port ${PORT}`);
-    console.log(`[Server] Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🚀 [Server] API server listening on port ${PORT}`);
     console.log(`[Server] Gemini API Key Loaded: ${!!process.env.GEMINI_API_KEY}`);
+    console.log(`[Server] BingX API Key Loaded: ${!!process.env.BINGX_API_KEY}`);
     console.log('============================================');
 });

@@ -4,110 +4,135 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Wyckoff/SMC AI Trading Analyst</title>
-  <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
-  <style>
-    body {
-      font-family: 'Inter', sans-serif; /* A nice sans-serif font */
-      background-color: #0f172a; /* slate-900 */
-      color: #f1f5f9; /* slate-100 */
-      overflow-x: hidden; /* Prevenir scroll horizontal en móviles */
+  
+  <script type="importmap">
+  {
+    "imports": {
+      "@google/genai": "https://esm.sh/@google/genai@^1.4.0",
+      "react": "https://esm.sh/react@^19.1.0",
+      "react/": "https://esm.sh/react@^19.1.0/",
+      "recharts": "https://esm.sh/recharts@^2.15.3",
+      "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+      "lightweight-charts": "https://esm.sh/lightweight-charts@^4.2.0",
+      "pako": "https://esm.sh/pako@^2.1.0"
     }
-    
-    /* Estilos responsivos para móvil */
-    @media (max-width: 768px) {
-      .container {
-        padding-left: 8px;
-        padding-right: 8px;
-      }
-      
-      button {
-        padding: 0.5rem !important;
-        font-size: 0.875rem !important;
-      }
-      
-      input, select {
-        font-size: 1rem;
-        height: 38px;
-      }
-    }
-    /* Custom scrollbar for better aesthetics */
-    ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #1e293b; /* slate-800 */
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #334155; /* slate-700 */
-      border-radius: 4px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #475569; /* slate-600 */
-    }
-    /* Lightweight Charts tooltip override if needed */
-    .tv-lightweight-charts-tooltip-container {
-      background-color: #1e293b !important; /* slate-800 */
-      color: #f1f5f9 !important; /* slate-100 */
-      border: 1px solid #334155 !important; /* slate-700 */
-    }
-  </style>
-<script type="importmap">
-{
-  "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.4.0",
-    "react": "https://esm.sh/react@^19.1.0",
-    "react/": "https://esm.sh/react@^19.1.0/",
-    "recharts": "https://esm.sh/recharts@^2.15.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
-    "lightweight-charts": "https://esm.sh/lightweight-charts@^4.2.0",
-    "pako": "https://esm.sh/pako@^2.1.0"
   }
-}
-</script>
-<link rel="stylesheet" href="/public/index.css">
-</head>
-<body class="bg-slate-900 text-slate-100">
-  <div id="root"></div>
-  <!-- Carga la versión para navegador de CCXT como un script global -->
-  <script src="/lib/ccxt.browser.min.js"></script>
-  <!-- Scripts para configuración de API Key -->
-  <script>
-    // Crear el objeto CONFIG si no existe
-    window.CONFIG = window.CONFIG || {};
-    
-    // Esta constante será reemplazada por el script de build (scripts/generate-config.js)
-    const injectedApiKey = "ENV_API_KEY_PLACEHOLDER";
-    
-    console.log(`Valor de injectedApiKey en index.html (pre-procesamiento): '${injectedApiKey}'`);
+  </script>
 
-    if (injectedApiKey && injectedApiKey !== "ENV_API_KEY_PLACEHOLDER" && injectedApiKey !== "NO_API_KEY_FOUND_FROM_ENV_VARS") {
-      window.CONFIG.API_KEY = injectedApiKey;
-      console.log(`✅ API Key configurada en window.CONFIG.API_KEY desde index.html (longitud: ${injectedApiKey.length})`);
-    } else if (injectedApiKey === "NO_API_KEY_FOUND_FROM_ENV_VARS") {
-      console.warn('🔴 API Key NO ENCONTRADA por el script de build en las variables de entorno de Render.');
-      window.CONFIG.API_KEY = ''; // Aseguramos que sea una cadena vacía
-    } else if (injectedApiKey === "ENV_API_KEY_PLACEHOLDER") {
-      console.error('❌ ERROR CRÍTICO: El placeholder de API Key no fue reemplazado por el script de build. Verifica la ejecución de generate-config.js.');
-      window.CONFIG.API_KEY = ''; // Aseguramos que sea una cadena vacía
-    } else {
-      console.warn('⚠️ API Key tiene un valor inesperado o vacío después de la inyección. Valor:', injectedApiKey);
-      window.CONFIG.API_KEY = ''; // Aseguramos que sea una cadena vacía
-    }
-    
-    window.process = {
-      env: {
-        API_KEY: window.CONFIG.API_KEY || ""
-      }
+  <!-- ÚNICA definición de CONFIG para desarrollo local -->
+  <script>
+    window.CONFIG = {
+      API_KEY: "dummy_gemini_api_key_for_development",
+      FMP_API_KEY: "dummy_fmp_api_key_for_development"
     };
     
-    // Log final sobre el estado de la API key para la aplicación
-    if (window.process.env.API_KEY && window.process.env.API_KEY.length > 10) { // Asumimos que una key válida tiene más de 10 caracteres
-      console.log('✅ API Key disponible para la aplicación en window.process.env.API_KEY.');
-    } else {
-      console.warn('⚠️ API Key NO disponible o inválida para la aplicación en window.process.env.API_KEY. El análisis de IA estará deshabilitado.');
-    }
+    // Log para verificar en el navegador
+    console.log('TradeRoad AI Config:', {
+      geminiKeyStatus: window.CONFIG.API_KEY.startsWith('dummy') ? 'OK (Development)' : 'NOT FOUND',
+      fmpKeyStatus: window.CONFIG.FMP_API_KEY.startsWith('dummy') ? 'OK (Development)' : 'NOT FOUND',
+    });
   </script>
+
+  <script>
+    window.CONFIG = {
+      API_KEY: "dummy_gemini_api_key_for_development",
+      FMP_API_KEY: "dummy_fmp_api_key_for_development"
+    };
+    // Log para verificar en el navegador
+    console.log('TradeRoad AI Config:', {
+      geminiKeyStatus: window.CONFIG.API_KEY.startsWith('NO_') ? 'NOT FOUND' : 'OK',
+      fmpKeyStatus: window.CONFIG.FMP_API_KEY.startsWith('NO_') ? 'NOT FOUND' : 'OK',
+    });
+  </script>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    <script>
+      window.CONFIG = {
+        API_KEY: "dummy_gemini_api_key_for_development",
+        FMP_API_KEY: "dummy_fmp_api_key_for_development"
+      };
+      // Log para verificar en el navegador
+      console.log('TradeRoad AI Config:', {
+        geminiKeyStatus: window.CONFIG.API_KEY.startsWith('NO_') ? 'NOT FOUND' : 'OK',
+        fmpKeyStatus: window.CONFIG.FMP_API_KEY.startsWith('NO_') ? 'NOT FOUND' : 'OK',
+      });
+    </script>
+
+    <script>
+      window.CONFIG = {
+        API_KEY: "dummy_gemini_api_key_for_development",
+        FMP_API_KEY: "dummy_fmp_api_key_for_development"
+      };
+      // Log para verificar en el navegador
+      console.log('TradeRoad AI Config:', {
+        geminiKeyStatus: window.CONFIG.API_KEY.startsWith('NO_') ? 'NOT FOUND' : 'OK',
+        fmpKeyStatus: window.CONFIG.FMP_API_KEY.startsWith('NO_') ? 'NOT FOUND' : 'OK',
+      });
+    </script>
+
+    <script>
+      window.CONFIG = {
+        API_KEY: "dummy_gemini_api_key_for_development",
+        FMP_API_KEY: "dummy_fmp_api_key_for_development"
+      };
+      // Log para verificar en el navegador
+      console.log('TradeRoad AI Config:', {
+        geminiKeyStatus: window.CONFIG.API_KEY.startsWith('NO_') ? 'NOT FOUND' : 'OK',
+        fmpKeyStatus: window.CONFIG.FMP_API_KEY.startsWith('NO_') ? 'NOT FOUND' : 'OK',
+      });
+    </script>
+
+    <script>
+      window.CONFIG = {
+        API_KEY: "dummy_gemini_api_key_for_development",
+        FMP_API_KEY: "dummy_fmp_api_key_for_development"
+      };
+      // Log para verificar en el navegador
+      console.log('TradeRoad AI Config:', {
+        geminiKeyStatus: window.CONFIG.API_KEY.startsWith('NO_') ? 'NOT FOUND' : 'OK',
+        fmpKeyStatus: window.CONFIG.FMP_API_KEY.startsWith('NO_') ? 'NOT FOUND' : 'OK',
+      });
+    </script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Vite inyectará aquí la referencia al script compilado con el punto de entrada correcto -->
   <script type="module" src="/index.tsx"></script>
 </body>
 </html>

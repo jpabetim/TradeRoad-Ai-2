@@ -1,117 +1,175 @@
-
-
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   createChart, IChartApi, ISeriesApi,
-  CandlestickData as LWCCandlestickData, LineData as LWCLineData, HistogramData as LWCHistogramData,
-  LineStyle, UTCTimestamp, PriceScaleMode, IPriceLine, DeepPartial, ChartOptions, SeriesMarker, Time, ColorType
+  CandlestickSeriesOptions, HistogramSeriesOptions, LineSeriesOptions,
+  LineStyle, PriceScaleMode, IPriceLine, DeepPartial, ChartOptions,
+  SeriesMarker, ColorType, SeriesMarkerShape, LineWidth, Time
 } from 'lightweight-charts';
 import pako from 'pako';
-import { DataSource, GeminiAnalysisResult, TickerData, AnalysisPointType, MovingAverageConfig, FibonacciLevel } from '../types'; // Removed DeltaZoneSettings
+import { DataSource, MovingAverageConfig, AnalysisPoint } from '../types';
 import { mapTimeframeToApi } from '../constants';
-// import { IndicatorName } from '../App'; // No longer needed as RSI is removed
+import { getHistoricalData as getFmpData, adaptFMPDataToCandlestick } from '../services/fmpService';
 
-type Theme = 'dark' | 'light';
+declare module 'pako' {
+  export function inflate(data: Uint8Array): Uint8Array;
+  export function deflate(data: Uint8Array): Uint8Array;
+}
 
 interface RealTimeTradingChartProps {
   dataSource: DataSource;
   symbol: string;
   timeframe: string;
-  analysisResult: GeminiAnalysisResult | null;
-  onLatestChartInfoUpdate: (info: { price: number | null; volume?: number | null }) => void; // RSI removed
-  onChartLoadingStateChange: (isLoading: boolean) => void;
+  onLatestInfo: (info: { price: number | null; volume?: number | null }) => void;
+  onChartLoading: (isLoading: boolean) => void;
   movingAverages: MovingAverageConfig[];
-  theme: Theme;
+  theme: 'dark' | 'light';
   chartPaneBackgroundColor: string;
   volumePaneHeight: number;
-  showAiAnalysisDrawings: boolean;
-  wSignalColor: string; // Hex color string e.g. #FFD700
-  wSignalOpacity: number; // Opacity from 0 to 1
-  showWSignals: boolean; // New prop to control W-Signal visibility
-  // Nuevas propiedades para soporte de múltiples fuentes de datos
-  providerOverride?: any; // Configuración de proveedor personalizado
-  staticData?: CandlestickData[]; // Datos pre-cargados para fuentes sin WebSocket
-  // RSI and DeltaZoneSettings props removed
-  // rsiColor: string;
+  showAiAnalysisDrawings: boolean; // Kept for future use
+  wSignalColor: string;
+  wSignalOpacity: number;
+  showWSignals: boolean;
+  analysisDrawings?: AnalysisPoint[];
+  priceProjectionPath?: number[];
+  providerOverride?: any;
+  staticData?: any[];
 }
 
-type CandlestickData = LWCCandlestickData<UTCTimestamp> & { volume?: number };
-type LineData = LWCLineData<UTCTimestamp>;
-type HistogramData = LWCHistogramData<UTCTimestamp>;
+type UTCTimestamp = number;
 
-interface BaseProviderConfig {
-  name: string;
-  historicalApi: (symbol: string, interval: string) => string;
-  formatSymbol: (s: string) => string;
-  parseKline: (data: any) => CandlestickData;
-  parseTicker: (data: any, currentSymbol: string, currentProvider: DataSource) => Partial<TickerData>;
-}
+type CandlestickData = {
+  time: UTCTimestamp;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+};
 
-interface BinanceProviderConfig extends BaseProviderConfig {
-  type: 'binance';
-  wsKline: (symbol: string, interval: string) => string;
-  wsTicker: (symbol: string) => string;
-  parseHistorical: (data: any[]) => CandlestickData[];
-}
+type LineData = {
+  time: UTCTimestamp;
+  value: number;
+};
 
-interface BingXProviderConfig extends BaseProviderConfig {
-  type: 'bingx';
-  wsBase: string;
-  getKlineSubMessage: (symbol: string, interval: string) => string;
-  getTickerSubMessage: (symbol: string) => string;
-  parseHistorical: (allOriginsResponse: any) => CandlestickData[];
-}
-
-type CurrentProviderConfig = BinanceProviderConfig | BingXProviderConfig;
-
-const PROVIDERS_CONFIG: { binance: BinanceProviderConfig; bingx: BingXProviderConfig; quodd: any } = {
+const PROVIDERS_CONFIG: { [key: string]: any } = {
   binance: {
     type: 'binance',
     name: 'Binance Futures',
     historicalApi: (symbol, interval) => `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=1000`,
     wsKline: (symbol, interval) => `wss://fstream.binance.com/ws/${symbol.toLowerCase()}@kline_${interval}`,
-    wsTicker: (symbol) => `wss://fstream.binance.com/ws/${symbol.toLowerCase()}@ticker`,
     formatSymbol: (s) => s.replace(/[^A-Z0-9]/g, '').toUpperCase(),
-    parseHistorical: (data) => data.map(k => ({ time: k[0] / 1000 as UTCTimestamp, open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]) })),
-    parseKline: (data) => ({ time: data.k.t / 1000 as UTCTimestamp, open: parseFloat(data.k.o), high: parseFloat(data.k.h), low: parseFloat(data.k.l), close: parseFloat(data.k.c), volume: parseFloat(data.k.v) }),
-    parseTicker: (data, currentSymbol, currentProvider) => ({ price: parseFloat(data.c), changePercent: parseFloat(data.P), volume: parseFloat(data.v), quoteVolume: parseFloat(data.q), symbol: currentSymbol, provider: currentProvider })
+    parseHistorical: (data) => {
+      // Verificar que data es un array antes de mapear
+      if (Array.isArray(data)) {
+        return data.map(k => {
+          const timestamp = k[0] / 1000;
+          if (isNaN(timestamp) || timestamp <= 0) {
+            console.error('Binance: Timestamp inválido', k[0]);
+            return null;
+          }
+          return {
+            time: timestamp as UTCTimestamp,
+            open: parseFloat(k[1]),
+            high: parseFloat(k[2]),
+            low: parseFloat(k[3]),
+            close: parseFloat(k[4]),
+            volume: parseFloat(k[5])
+          };
+        }).filter(Boolean);
+      }
+      console.error('Binance: Datos no son un array', data);
+      return [];
+    },
+    parseKline: (data) => ({
+      time: data.k.t / 1000 as UTCTimestamp,
+      open: parseFloat(data.k.o),
+      high: parseFloat(data.k.h),
+      low: parseFloat(data.k.l),
+      close: parseFloat(data.k.c),
+      volume: parseFloat(data.k.v)
+    }),
   },
   bingx: {
     type: 'bingx',
     name: 'BingX Futures',
+    // Llamamos a nuestro proxy y le pasamos la URL de BingX
     historicalApi: (symbol, interval) => {
-      const validBinanceSymbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'SOLUSDT'];
-      const formattedSymbol = symbol.replace(/[^A-Z0-9]/g, '').toUpperCase();
+      // 1. Construye la URL real de BingX que queremos que el proxy llame
+      const bingxApiUrl = `https://open-api.bingx.com/openApi/swap/v2/quote/klines?symbol=${symbol}&interval=${interval}&limit=1000`;
       
-      if (validBinanceSymbols.includes(formattedSymbol)) {
-        return `https://fapi.binance.com/fapi/v1/klines?symbol=${formattedSymbol}&interval=${interval}&limit=1000`;
-      } else {
-        console.warn(`Símbolo ${symbol} no compatible con Binance Futures, se usarán datos simulados`);
-        return '';
-      }
+      // 2. Construye la URL de nuestro proxy, pasando la URL de BingX como parámetro
+      return `/api/proxy?url=${encodeURIComponent(bingxApiUrl)}`;
     },
-    wsBase: 'wss://open-api-swap.bingx.com/swap-market', 
-    formatSymbol: (s) => s.replace(/[^A-Z0-9]/g, '').toUpperCase(),
-    parseHistorical: (data) => data.map(k => ({ time: k[0] / 1000 as UTCTimestamp, open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]) })),
+    wsBase: 'wss://open-api-swap.bingx.com/swap-market',
+    formatSymbol: (s) => s.replace(/[^A-Z0-9-]/g, '').toUpperCase(), // Permite guiones para BTC-USDT
+    parseHistorical: (response) => {
+      // Verificar que response tiene la estructura esperada
+      if (response && response.data && Array.isArray(response.data)) {
+        return response.data.map((k: any) => {
+          const timestamp = parseInt(k.time) / 1000;
+          if (isNaN(timestamp) || timestamp <= 0) {
+            console.error('BingX: Timestamp inválido', k.time);
+            return null;
+          }
+          return {
+            time: timestamp as UTCTimestamp,
+            open: parseFloat(k.open),
+            high: parseFloat(k.high),
+            low: parseFloat(k.low),
+            close: parseFloat(k.close),
+            volume: parseFloat(k.volume)
+          };
+        }).filter(Boolean);
+      }
+      // Si no tiene la estructura esperada, devolver array vacío
+      console.error('BingX: Respuesta mal formada', response);
+      return [];
+    },
     getKlineSubMessage: (symbol, interval) => JSON.stringify({ id: crypto.randomUUID(), reqType: 'sub', dataType: `${symbol}@kline_${interval}` }),
-    getTickerSubMessage: (symbol) => JSON.stringify({ id: crypto.randomUUID(), reqType: 'sub', dataType: `${symbol}@trade` }),
-    parseKline: (data) => ({ time: data.T / 1000 as UTCTimestamp, open: parseFloat(data.o), high: parseFloat(data.h), low: parseFloat(data.l), close: parseFloat(data.c), volume: parseFloat(data.v) }),
-    parseTicker: (data, currentSymbol, currentProvider) => ({ price: parseFloat(data.p), symbol: currentSymbol, provider: currentProvider })
+    parseKline: (data) => ({
+      time: data.T / 1000 as UTCTimestamp,
+      open: parseFloat(data.o),
+      high: parseFloat(data.h),
+      low: parseFloat(data.l),
+      close: parseFloat(data.c),
+      volume: parseFloat(data.v)
+    }),
+  },
+  fmp: {
+    type: 'fmp',
+    name: 'Financial Modeling Prep',
+    // Nota: No necesitamos definir historicalApi aquí porque usamos el servicio FMP directamente
+    formatSymbol: (s) => s.toUpperCase(), // FMP usa símbolos estándar como SPX, AAPL
+    parseHistorical: (data) => {
+      // Usamos el adaptador de FMP que tiene su propia validación robusta
+      return adaptFMPDataToCandlestick(data);
+    }
   },
   quodd: {
     type: 'quodd',
-    name: 'QUODD API',
-    historicalApi: () => '',
-    formatSymbol: (s) => s, 
-    parseHistorical: () => [] 
-  }
+    name: 'Quodd',
+    historicalApi: (symbol, interval) => `https://api.example.com/quodd/historical?symbol=${symbol}&interval=${interval}`,
+    formatSymbol: (s) => s.replace(/\s+/g, '').toUpperCase(),
+    parseHistorical: (response) => {
+      if (!response || !response.candles) return [];
+      return response.candles.map((k: any) => ({
+        time: parseInt(k.timestamp) / 1000 as UTCTimestamp, 
+        open: parseFloat(k.open),
+        high: parseFloat(k.high),
+        low: parseFloat(k.low),
+        close: parseFloat(k.close),
+        volume: parseFloat(k.volume || 0)
+      }));
+    },
+  },
 };
 
 const calculateMA = (data: CandlestickData[], period: number): LineData[] => {
   if (data.length < period) return [];
   const results: LineData[] = [];
   for (let i = period - 1; i < data.length; i++) {
-    let sum = 0; for (let j = 0; j < period; j++) { sum += data[i - j].close; }
+    let sum: number = 0;
+    for (let j = 0; j < period; j++) { sum += data[i - j].close; }
     results.push({ time: data[i].time, value: sum / period });
   }
   return results;
@@ -119,18 +177,22 @@ const calculateMA = (data: CandlestickData[], period: number): LineData[] => {
 
 const calculateEMA = (data: CandlestickData[], period: number): LineData[] => {
   if (data.length < period) return [];
-  const results: LineData[] = []; const k = 2 / (period + 1);
-  let sumForSma = 0; for (let i = 0; i < period; i++) { sumForSma += data[i].close; }
-  let ema = sumForSma / period; results.push({ time: data[period - 1].time, value: ema });
+  const results: LineData[] = [];
+  const k: number = 2 / (period + 1);
+  let sumForSma: number = 0;
+  for (let i = 0; i < period; i++) { sumForSma += data[i].close; }
+  let emaValue: number = sumForSma / period;
+  results.push({ time: data[period - 1].time, value: emaValue });
   for (let i = period; i < data.length; i++) {
-    ema = (data[i].close - ema) * k + ema; results.push({ time: data[i].time, value: ema });
+    emaValue = (data[i].close - emaValue) * k + emaValue;
+    results.push({ time: data[i].time, value: emaValue });
   }
   return results;
 };
 
 const isColorLight = (hexColor: string): boolean => {
   const color = hexColor.startsWith('#') ? hexColor.slice(1) : hexColor;
-  if (color.length !== 6 && color.length !== 3) return true; 
+  if (color.length !== 6 && color.length !== 3) return true;
   let r, g, b;
   if (color.length === 3) {
     r = parseInt(color[0] + color[0], 16); g = parseInt(color[1] + color[1], 16); b = parseInt(color[2] + color[2], 16);
@@ -141,583 +203,621 @@ const isColorLight = (hexColor: string): boolean => {
 };
 
 const THEME_COLORS = {
-  light: { background: '#FFFFFF', text: '#000000', grid: '#e5e7eb', border: '#d1d5db', fiboRetracement: 'rgba(59, 130, 246, 0.7)', fiboExtension: 'rgba(249, 115, 22, 0.7)' },
-  dark: { background: '#0f172a', text: '#FFFFFF', grid: '#1e293b', border: '#334155', fiboRetracement: 'rgba(96, 165, 250, 0.7)', fiboExtension: 'rgba(251, 146, 60, 0.7)' }
+  light: { background: '#FFFFFF', text: '#000000', grid: '#e5e7eb' },
+  dark: { background: '#0f172a', text: '#FFFFFF', grid: '#1e293b' }
 };
 
 const getChartLayoutOptions = (
-  effectiveBackgroundColor: string, effectiveTextColor: string, gridColor: string, borderColor: string
+  effectiveBackgroundColor: string, effectiveTextColor: string, gridColor: string
 ): DeepPartial<ChartOptions> => ({
   layout: {
     background: { type: ColorType.Solid, color: effectiveBackgroundColor },
-    textColor: effectiveTextColor 
+    textColor: effectiveTextColor
   },
   grid: { vertLines: { color: gridColor }, horzLines: { color: gridColor } },
-  // Time scale and price scale text colors will be set explicitly after chart creation
 });
 
-const generateMockData = (symbol: string, count: number): CandlestickData[] => {
-  console.log(`Generando ${count} velas simuladas para ${symbol}`);
-  const now = Math.floor(Date.now() / 1000) as UTCTimestamp;
-  const interval = 900; 
-  const basePrice = symbol.includes('BTC') ? 40000 : symbol.includes('ETH') ? 2500 : 100;
-  
-  let lastPrice = basePrice + (Math.random() * basePrice * 0.1);
-  let lastVolume = Math.random() * 100;
-  
-  const candles: CandlestickData[] = [];
+const generateMockData = (count: number): CandlestickData[] => {
+  const baseTime = Math.floor(Date.now() / 1000) - count * 86400;
+  const data: CandlestickData[] = [];
   
   for (let i = 0; i < count; i++) {
-    const time = (now - ((count - i) * interval)) as UTCTimestamp;
-    const volatility = Math.random() * 0.02; 
-    const direction = Math.random() > 0.5 ? 1 : -1;
-    const change = lastPrice * volatility * direction;
+    const time = baseTime + i * 86400;
+    const open = 100 + Math.random() * 10;
+    const high = open + Math.random() * 5;
+    const low = open - Math.random() * 5;
+    const close = (open + high + low) / 3 + (Math.random() * 2 - 1);
+    const volume = 1000 + Math.random() * 2000;
     
-    const open = lastPrice;
-    const close = lastPrice + change;
-    const high = Math.max(open, close) + (Math.random() * lastPrice * 0.01);
-    const low = Math.min(open, close) - (Math.random() * lastPrice * 0.01);
-    const volume = lastVolume + (Math.random() * 50) - 25;
-    
-    candles.push({
-      time,
-      open,
-      high,
-      low,
-      close,
-      volume: volume > 10 ? volume : 10
-    });
-    
-    lastPrice = close;
-    lastVolume = volume;
+    data.push({ time, open, high, low, close, volume });
   }
   
-  return candles;
+  return data;
 };
 
-// Define los tipos específicos para las funciones de cálculo
-const calculateMA = (data: CandlestickData[], period: number): LineData[] => {
-  if (data.length < period) return [];
-  const results: LineData[] = [];
-  for (let i = period - 1; i < data.length; i++) {
-    let sum = 0;
-    for (let j = 0; j < period; j++) { sum += data[i - j].close; }
-    results.push({ time: data[i].time, value: sum / period });
+// Helper para convertir cualquier string de forma a un SeriesMarkerShape válido
+const getValidMarkerShape = (shape: string): SeriesMarkerShape => {
+  // Los valores válidos para SeriesMarkerShape en lightweight-charts
+  switch (shape.toLowerCase()) {
+    case 'circle':
+      return 'circle';
+    case 'square':
+      return 'square';
+    case 'arrowup':
+    case 'arrow_up':
+    case 'arrow-up':
+      return 'arrowUp';
+    case 'arrowdown':
+    case 'arrow_down':
+    case 'arrow-down':
+      return 'arrowDown';
+    case 'diamond': // No soportado directamente, usar circle
+    default:
+      return 'circle';
   }
-  return results;
 };
 
-const calculateEMA = (data: CandlestickData[], period: number): LineData[] => {
-  if (data.length < period) return [];
-  const results: LineData[] = []; 
-  const k = 2 / (period + 1);
-  let sumForSma = 0; 
-  for (let i = 0; i < period; i++) { sumForSma += data[i].close; }
-  
-  let emaValue = sumForSma / period;
-  results.push({ time: data[period - 1].time, value: emaValue });
-  
-  for (let i = period; i < data.length; i++) {
-    emaValue = (data[i].close - emaValue) * k + emaValue;
-    results.push({ time: data[i].time, value: emaValue });
-  }
-  return results;
-};
-
-const RealTimeTradingChart: React.FC<RealTimeTradingChartProps> = ({
-  dataSource, symbol: rawSymbol, timeframe: rawTimeframe, analysisResult,
-  onLatestChartInfoUpdate, onChartLoadingStateChange, movingAverages,
-  theme, chartPaneBackgroundColor, volumePaneHeight, showAiAnalysisDrawings,
-  wSignalColor, wSignalOpacity, showWSignals, providerOverride, staticData
-}) => {
+export default function RealTimeTradingChart({
+  dataSource,
+  symbol: rawSymbol,
+  timeframe: rawTimeframe,
+  onLatestInfo = () => {},
+  onChartLoading = () => {},
+  movingAverages = [],
+  theme = 'dark',
+  chartPaneBackgroundColor = '',
+  volumePaneHeight = 0.2,
+  showAiAnalysisDrawings = true,
+  wSignalColor = 'rgba(255, 235, 59, 1)',
+  wSignalOpacity = 0.7,
+  showWSignals = false,
+  analysisDrawings = [],
+  priceProjectionPath = [],
+  providerOverride = null,
+  staticData = null,
+}: RealTimeTradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick', UTCTimestamp>>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<'Histogram', UTCTimestamp>>(null);
-  const projectionSeriesRef = useRef<ISeriesApi<'Line', UTCTimestamp>>(null);
-  const analysisPriceLinesRef = useRef<IPriceLine[]>([]);
-  const maSeriesRefs = useRef<ISeriesApi<'Line', UTCTimestamp>[]>([]);
-  const volumePriceScaleIdRef = useRef<string | null>(null);
+  const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'>>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'>>(null);
+  const maSeriesRefs = useRef<Map<string, ISeriesApi<'Line'>>>(new Map());
+  const priceProjectionSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const analysisMarkersRef = useRef<SeriesMarker<Time>[]>([]);
 
   const [historicalData, setHistoricalData] = useState<CandlestickData[]>([]);
-  const [tickerData, setTickerData] = useState<TickerData | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'ok' | 'error'>('connecting');
-  const [currentIntervalInSeconds, setCurrentIntervalInSeconds] = useState<number>(3600);
 
-  const providerConf = providerOverride || (PROVIDERS_CONFIG[dataSource as 'binance' | 'bingx'] || null);
-  
-  const formattedSymbol = (rawSymbol && providerConf && providerConf.formatSymbol) 
-    ? providerConf.formatSymbol(rawSymbol) 
-    : rawSymbol;
+  const baseProviderConf = PROVIDERS_CONFIG[dataSource as string] || {};
+  const providerConf = providerOverride && providerOverride[dataSource] 
+    ? { ...baseProviderConf, ...providerOverride[dataSource] } 
+    : baseProviderConf;
+  const formattedSymbol = (rawSymbol && providerConf?.formatSymbol) ? providerConf.formatSymbol(rawSymbol) : rawSymbol;
   const apiTimeframe = mapTimeframeToApi(rawTimeframe);
 
-  const getStrokeColor = (type: AnalysisPointType | string, isFvg: boolean = false): string => {
-    const opacity = isFvg ? '0.3' : '0.7'; 
-    switch(type) {
-      case AnalysisPointType.POI_OFERTA:
-      case AnalysisPointType.FVG_BAJISTA:
-        return `rgba(239, 68, 68, ${opacity})`; 
-      case AnalysisPointType.POI_DEMANDA:
-      case AnalysisPointType.FVG_ALCISTA:
-        return `rgba(34, 197, 94, ${opacity})`; 
-      case AnalysisPointType.LIQUIDEZ_COMPRADORA:
-        return `rgba(59, 130, 246, ${opacity})`; 
-      case AnalysisPointType.LIQUIDEZ_VENDEDORA:
-        return `rgba(249, 115, 22, ${opacity})`; 
-      case AnalysisPointType.BOS_ALCISTA:
-      case AnalysisPointType.CHOCH_ALCISTA:
-          return `rgba(16, 185, 129, ${opacity})`; 
-      case AnalysisPointType.BOS_BAJISTA:
-      case AnalysisPointType.CHOCH_BAJISTA:
-          return `rgba(220, 38, 38, ${opacity})`; 
-      case AnalysisPointType.EQUILIBRIUM:
-        return `rgba(107, 114, 128, ${opacity})`; 
-      default: return `rgba(156, 163, 175, ${opacity})`; 
+  const processAndSetData = useCallback((rawData: any[]) => {
+    if (!candlestickSeriesRef.current || !volumeSeriesRef.current) return;
+    
+    // Validar y sanitizar datos para asegurar que todos tienen un time válido como UTCTimestamp
+    const sanitizedData: CandlestickData[] = rawData
+      .filter(item => item && typeof item === 'object') // Filtrar elementos nulos o no-objetos
+      .map(item => {
+        // Asegurarse de que time es un número (UTCTimestamp)
+        let time: UTCTimestamp;
+        
+        if (typeof item.time === 'number') {
+          // Ya es número, verificar que es válido
+          time = isNaN(item.time) ? Math.floor(Date.now() / 1000) : item.time as UTCTimestamp;
+        } else if (item.time instanceof Date) {
+          // Es un objeto Date, convertir a timestamp
+          time = Math.floor(item.time.getTime() / 1000) as UTCTimestamp;
+        } else if (typeof item.time === 'string') {
+          // Es string, intentar convertir a timestamp
+          try {
+            time = Math.floor(new Date(item.time).getTime() / 1000) as UTCTimestamp;
+            if (isNaN(time)) {
+              console.error('Error: fecha inválida:', item.time);
+              time = Math.floor(Date.now() / 1000) as UTCTimestamp;
+            }
+          } catch (e) {
+            console.error('Error al procesar fecha string:', e);
+            time = Math.floor(Date.now() / 1000) as UTCTimestamp;
+          }
+        } else if (item.timestamp) {
+          // Si no hay time pero hay timestamp, usamos timestamp
+          try {
+            time = Number(item.timestamp) as UTCTimestamp;
+          } catch (e) {
+            console.error('Error al procesar timestamp:', e);
+            time = Math.floor(Date.now() / 1000) as UTCTimestamp;
+          }
+        } else if (item.date) {
+          // Si no hay time ni timestamp pero hay date, convertimos date a timestamp
+          try {
+            const dateObj = new Date(item.date);
+            if (!isNaN(dateObj.getTime())) {
+              time = Math.floor(dateObj.getTime() / 1000) as UTCTimestamp;
+            } else {
+              console.error('Error: date inválido', item.date);
+              time = Math.floor(Date.now() / 1000) as UTCTimestamp;
+            }
+          } catch (e) {
+            console.error('Error al procesar date string:', e);
+            time = Math.floor(Date.now() / 1000) as UTCTimestamp;
+          }
+        } else {
+          console.error('Error: formato de fecha no válido, sin time/timestamp/date', item);
+          time = Math.floor(Date.now() / 1000) as UTCTimestamp;
+        }
+        
+        // Devolver objeto con formato sanitizado
+        return {
+          time,
+          open: Number(item.open),
+          high: Number(item.high),
+          low: Number(item.low),
+          close: Number(item.close),
+          volume: item.volume ? Number(item.volume) : 0
+        };
+      });
+
+    // Ordenar datos cronológicamente
+    sanitizedData.sort((a, b) => a.time - b.time);
+    
+    setHistoricalData(sanitizedData);
+    candlestickSeriesRef.current.setData(sanitizedData);
+
+    const volumeData = sanitizedData.map(d => ({
+        time: d.time,
+        value: d.volume || 0,
+        color: d.close > d.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
+    }));
+    volumeSeriesRef.current.setData(volumeData);
+
+    if (sanitizedData.length > 0) {
+        const lastCandle = sanitizedData[sanitizedData.length - 1];
+        onLatestInfo({ price: lastCandle.close, volume: lastCandle.volume });
     }
-  };
+    onChartLoading(false);
+  }, [onLatestInfo, onChartLoading]);
+
+  // Effect to update analysis drawings when they change
+  useEffect(() => {
+    if (!candlestickSeriesRef.current || !chartRef.current || !analysisDrawings) return;
+    
+    // Remove existing markers first
+    candlestickSeriesRef.current.setMarkers([]);
+    
+    // Create new markers for each analysis point
+    const markers: SeriesMarker<Time>[] = analysisDrawings.map((point: AnalysisPoint) => {
+      // Determine shape based on tipo property
+      let shape: SeriesMarkerShape = 'circle'; // Default shape
+      
+      // Convert marker_shape to a valid SeriesMarkerShape if present
+      if (point.marker_shape) {
+        // Make sure it's a valid SeriesMarkerShape value
+        const validShape = getValidMarkerShape(point.marker_shape);
+        shape = validShape;
+      } else {
+        // Otherwise, derive shape from tipo
+        const pointType = point.tipo?.toLowerCase();
+        if (pointType?.includes('resist')) shape = 'square';
+        else if (pointType?.includes('soporte') || pointType?.includes('support')) shape = 'circle';
+        else if (pointType?.includes('break') && !pointType?.includes('down')) shape = 'arrowUp';
+        else if (pointType?.includes('break') && pointType?.includes('down')) shape = 'arrowDown';
+        else if (pointType?.includes('demanda')) shape = 'arrowUp';
+        else if (pointType?.includes('oferta')) shape = 'arrowDown';
+      }
+      
+      // Parse the time based on the format
+      let time: Time;
+      
+      if (point.marker_time) {
+        // If marker_time is provided, use it directly
+        time = point.marker_time as Time;
+      } else {
+        // Otherwise use the last candle time as default
+        time = historicalData.length > 0 
+          ? historicalData[historicalData.length - 1].time as Time 
+          : Math.floor(Date.now() / 1000) as Time;
+      }
+      
+      // Return the marker configuration
+      return {
+        time,
+        position: point.marker_position || 'inBar',
+        color: point.color || '#FF0000',
+        shape,
+        text: point.marker_text || point.label,
+        id: point.id,
+        size: 1
+      };
+    });
+    
+    // Save markers reference
+    analysisMarkersRef.current = markers;
+    
+    // Apply markers to the chart
+    candlestickSeriesRef.current.setMarkers(markers);
+  }, [analysisDrawings, historicalData]);
   
-  const getTextColorForZone = (bgColor: string) => {
-    return isColorLight(bgColor) ? THEME_COLORS.dark.text : THEME_COLORS.light.text;
-  };
-
-  const calculateIntervalInSeconds = (tf: string): number => {
-    const value = parseInt(tf.slice(0, -1)); const unit = tf.slice(-1).toLowerCase();
-    if (unit === 'm') return value * 60; if (unit === 'h') return value * 3600;
-    if (unit === 'd') return value * 86400; if (unit === 'w') return value * 604800;
-    return 3600;
-  };
-
+  // Effect to update price projection when it changes
+  useEffect(() => {
+    if (!chartRef.current || !priceProjectionSeriesRef.current || !historicalData.length || !priceProjectionPath?.length) return;
+    
+    // Create a line series for price projection if it doesn't exist
+    // The line will start from the last candle and extend based on the projection path
+    const lastCandle = historicalData[historicalData.length - 1];
+    if (!lastCandle) return;
+    
+    // Calculate timestamps for projection points
+    // Each projection point will be timeframe units into the future
+    const projectionData = priceProjectionPath.map((price, index: number) => {
+      // Use last candle's timestamp as base and add future time points based on index
+      // We're using the same timeframe unit (e.g., 1 hour = 3600 seconds)
+      let timeIncrement = 0;
+      if (apiTimeframe === '1h') timeIncrement = 3600;
+      else if (apiTimeframe === '4h') timeIncrement = 3600 * 4;
+      else if (apiTimeframe === '1d') timeIncrement = 3600 * 24;
+      else if (apiTimeframe === '1w') timeIncrement = 3600 * 24 * 7;
+      else if (apiTimeframe.includes('m')) {
+        // Extract minutes value, e.g., '15m' -> 15
+        const minutes = parseInt(apiTimeframe.replace('m', '')) || 1;
+        timeIncrement = 60 * minutes;
+      }
+      
+      const time = (lastCandle.time as number) + (index + 1) * timeIncrement;
+      
+      return {
+        time: time as Time,
+        value: price
+      };
+    });
+    
+    // Set data to projection series
+    priceProjectionSeriesRef.current.setData(projectionData);
+  }, [priceProjectionPath, historicalData, apiTimeframe]);
+  
+  // Main effect for chart creation and destruction
   useEffect(() => {
     const chartEl = chartContainerRef.current;
     if (!chartEl || !formattedSymbol || !providerConf) {
-      onChartLoadingStateChange(false);
+      onChartLoading(false);
       return;
     }
 
-    onChartLoadingStateChange(true); setTickerData(null);
-    onLatestChartInfoUpdate({ price: null, volume: null }); 
-    setHistoricalData([]); maSeriesRefs.current = {};
-    setCurrentIntervalInSeconds(calculateIntervalInSeconds(apiTimeframe));
+    onChartLoading(true);
     
-    volumePriceScaleIdRef.current = null;
-
-    const volumePaneIndex = 1; 
-
     const effectiveBackgroundColor = chartPaneBackgroundColor || (theme === 'dark' ? THEME_COLORS.dark.background : THEME_COLORS.light.background);
-    const scaleTextColor = isColorLight(effectiveBackgroundColor) ? THEME_COLORS.light.text : THEME_COLORS.dark.text;
-    const generalLayoutTextColor = scaleTextColor; 
-    
+    const scaleTextColor = isColorLight(effectiveBackgroundColor) ? THEME_COLORS.dark.text : THEME_COLORS.light.text;
     const gridColor = theme === 'dark' ? THEME_COLORS.dark.grid : THEME_COLORS.light.grid;
-    const borderColor = theme === 'dark' ? THEME_COLORS.dark.border : THEME_COLORS.light.border;
     
-    const chartBaseOptions: DeepPartial<ChartOptions> = {
-        ...getChartLayoutOptions(effectiveBackgroundColor, generalLayoutTextColor, gridColor, borderColor),
+    const chart = createChart(chartEl, {
+        ...getChartLayoutOptions(effectiveBackgroundColor, scaleTextColor, gridColor),
         autoSize: true,
-        timeScale: { 
-            timeVisible: true, 
-            secondsVisible: apiTimeframe.includes('m'),
-        },
+        timeScale: { timeVisible: true, secondsVisible: false },
         rightPriceScale: { 
-            mode: PriceScaleMode.Logarithmic, 
-            scaleMargins: { top: 0.1, bottom: 0.05 },
+          mode: PriceScaleMode.Logarithmic,
+          borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)',
+          textColor: theme === 'dark' ? '#D1D5DB' : '#1F2937',
         },
-    };
-
-    if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
-    chartRef.current = createChart(chartEl, chartBaseOptions);
-    
-    candlestickSeriesRef.current = chartRef.current.addCandlestickSeries({
-      upColor: '#26a69a', 
-      downColor: '#ef5350',
-      borderVisible: false,
-      wickUpColor: '#26a69a', 
-      wickDownColor: '#ef5350',
     });
-    projectionSeriesRef.current = chartRef.current.addLineSeries({ color: '#0ea5e9', lineWidth: 2, lineStyle: LineStyle.Dashed, lastValueVisible: false, priceLineVisible: false, pane: 0 });
+    chartRef.current = chart;
 
-    volumeSeriesRef.current = null;
-    if (chartRef.current) { 
-      const id = `volume_ps_${volumePaneIndex}`;
-      volumeSeriesRef.current = chartRef.current.addHistogramSeries({
-        priceScaleId: id,
-        priceFormat: {
-          type: 'volume'
-        }
-      });
-      chartRef.current.priceScale(id).applyOptions({
-        scaleMargins: { top: 0.8, bottom: 0 },
-      });
-    }
+    candlestickSeriesRef.current = chart.addCandlestickSeries({
+      upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+      wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+    });
+
+    volumeSeriesRef.current = chart.addHistogramSeries({
+        priceScaleId: 'volume_ps', color: '#26a69a', priceFormat: { type: 'volume' }
+    });
+    chart.priceScale('volume_ps').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
     
-    const applyScaleStyles = (chart: IChartApi, txtColor: string, brdColor: string) => {
-        chart.priceScale('right').applyOptions({
-            textColor: txtColor,
-            borderColor: brdColor,
-        });
-
-        chart.timeScale().applyOptions({
-            textColor: txtColor,
-            borderColor: brdColor,
-        });
-
-        if (volumePriceScaleIdRef.current) {
-            chart.priceScale(volumePriceScaleIdRef.current).applyOptions({
-                textColor: txtColor,
-                borderColor: brdColor,
-                scaleMargins: { top: 0.8, bottom: 0.02 },
-            });
-        }
-    };
-
-    if (chartRef.current) {
-        applyScaleStyles(chartRef.current, scaleTextColor, borderColor);
-    }
-
-    const fetchHistoricalData = async () => {
-      if (!providerConf || typeof providerConf.historicalApi !== 'function') {
-        console.error('No se ha configurado correctamente el proveedor de datos');
-        setConnectionStatus('error');
-        onChartLoadingStateChange(false);
-        return [];
-      }
-      
-      try {
-        const apiUrl = providerConf.historicalApi(formattedSymbol, apiTimeframe);
-        
-        if (!apiUrl) {
-          console.log(`URL vacía al intentar obtener datos históricos para ${rawSymbol}. Proveedor: ${providerConf.name}`);
+    // Add a line series for price projection
+    priceProjectionSeriesRef.current = chart.addLineSeries({
+      color: '#4B89FF',
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 6,
+    });
+    
+    // Only fetch historical data if we are not using static data from the adapter
+    if (!staticData) {
+      const fetchHistoricalData = async () => {
+        try {
+          onChartLoading(true);
+          setConnectionStatus('connecting');
           
-          if (providerConf.type === 'bingx') {
-            console.log(`Generando datos simulados para ${rawSymbol} ya que el símbolo no es compatible con Binance Futures`);
-            const mockData = generateMockData(rawSymbol, 100);
-            return mockData;
-          }
-          return [];
-        }
-        
-        console.log(`Fetching historical data from: ${apiUrl}`);
-        const response = await fetch(apiUrl);
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.log(`HTTP error! status: ${response.status}, URL: ${apiUrl}, Response: ${errorText}`);
+          // Formateo final del símbolo justo antes de la llamada
+          const finalSymbol = providerConf.formatSymbol ? providerConf.formatSymbol(rawSymbol) : rawSymbol;
           
-          if (providerConf.type === 'bingx' && errorText.includes('Invalid symbol')) {
-            console.log(`Símbolo inválido para Binance. Generando datos simulados para ${rawSymbol}`);
-            const mockData = generateMockData(rawSymbol, 100);
-            return mockData;
-          }
+          let parsedData = [];
           
-          throw new Error(`HTTP error! status: ${response.status}, Response: ${errorText}`);
-        }
-        
-        const rawData = await response.json();
-        
-        if (!providerConf.parseHistorical || typeof providerConf.parseHistorical !== 'function') {
-          console.error('No se ha configurado el parseador de datos históricos para el proveedor');
-          return [];
-        }
-        
-        const parsedData = providerConf.parseHistorical(rawData);
-        
-        parsedData.sort((a, b) => a.time - b.time);
-        setHistoricalData(parsedData);
-        
-        if (candlestickSeriesRef.current && parsedData.length > 0) {
-          candlestickSeriesRef.current.setData(parsedData);
-        }
-
-        if (volumeSeriesRef.current && parsedData.length > 0) {
-          const volumeData = parsedData
-            .filter((d: CandlestickData) => d.volume !== undefined)
-            .map((d: CandlestickData) => ({ 
-              time: d.time, 
-              value: d.volume || 0, 
-              color: d.close > d.open ? '#26a69a' : '#ef5350' 
-            }));
-
-          volumeSeriesRef.current.setData(volumeData);
-        }
-
-        if (parsedData.length > 0) {
-          setConnectionStatus('ok');
-          const lastCandle = parsedData[parsedData.length - 1];
-          onLatestChartInfoUpdate({ price: lastCandle.close, volume: lastCandle.volume });
-        } else {
-          setConnectionStatus('error');
-          console.error(`No se pudieron obtener datos históricos de ${apiUrl}`);
-        }
-        
-        return parsedData;
-      } catch (error) {
-        setConnectionStatus('error');
-        console.error(`Error fetching historical data: ${error}`);
-        
-        if (providerConf?.type === 'bingx') {
-          console.log(`Error con API de Binance. Generando datos simulados para ${rawSymbol}`);
-          const mockData = generateMockData(rawSymbol, 100);
-          setHistoricalData(mockData);
-          
-          if (candlestickSeriesRef.current) {
-            candlestickSeriesRef.current.setData(mockData);
-          }
-          
-          if (volumeSeriesRef.current) {
-            const volumeData = mockData
-              .filter((d: CandlestickData) => d.volume !== undefined)
-              .map((d: CandlestickData) => ({ 
-                time: d.time, 
-                value: d.volume || 0, 
-                color: d.close > d.open ? '#26a69a' : '#ef5350' 
-              }));
-            
-            volumeSeriesRef.current.setData(volumeData);
-            
-            if (mockData.length > 0) {
-              const lastCandle = mockData[mockData.length - 1];
-              onLatestChartInfoUpdate({ price: lastCandle.close, volume: lastCandle.volume });
-            }
-          }
-        }
-        
-        onChartLoadingStateChange(false);
-        return [];
-      }
-    };
-    
-  const setupWebSocket = () => {
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
-    
-    if (!providerConf) {
-      console.error('No se ha configurado el proveedor de datos');
-      return;
-    }
-    
-    let ws: WebSocket;
-    
-    if (providerConf.type === 'binance') {
-      ws = new WebSocket(providerConf.wsKline(formattedSymbol, apiTimeframe));
-    } else if (providerConf.type === 'bingx') {
-      ws = new WebSocket(providerConf.wsBase);
-    } else {
-      console.log(`Proveedor ${providerConf.type} no soporta WebSocket`);
-      return;
-    }
-    
-    wsRef.current = ws;
-    
-    ws.onopen = () => { 
-      setConnectionStatus('ok'); 
-      console.log(`${providerConf.name} WebSocket connected for klines.`);
-      
-      if (providerConf.type === 'bingx') {
-        ws.send(providerConf.getKlineSubMessage(formattedSymbol, apiTimeframe));
-      }
-    };
-    
-    ws.onmessage = (event: MessageEvent) => {
-      try {
-        let klineData: any;
-        
-        if (providerConf.type === 'bingx' && typeof event.data === "string" && event.data.includes("ping")) {
-          ws.send(event.data.replace("ping", "pong")); 
-          return;
-        } else if (providerConf.type === 'bingx' && event.data instanceof Blob) {
-          const reader = new FileReader();
-          reader.onload = function() {
+          // Caso especial para FMP que usa un servicio dedicado en lugar de una URL directa
+          if (dataSource === 'fmp') {
             try {
-              const result = pako.inflate(new Uint8Array(reader.result as ArrayBuffer), { to: 'string' });
-              const jsonData = JSON.parse(result);
-              if (jsonData && jsonData.dataType && jsonData.dataType.startsWith(`${formattedSymbol}@kline_`)) {
-                const kline = jsonData.data?.[0];
-                if (kline) {
-                  const newCandle = { 
-                    time: kline.T / 1000 as UTCTimestamp, 
-                    open: parseFloat(kline.o), 
-                    high: parseFloat(kline.h), 
-                    low: parseFloat(kline.l), 
-                    close: parseFloat(kline.c), 
-                    volume: parseFloat(kline.v) 
-                  };
-                  
-                  candlestickSeriesRef.current?.update(newCandle);
-                  volumeSeriesRef.current?.update({ 
-                    time: newCandle.time, 
-                    value: newCandle.volume ?? 0, 
-                    color: newCandle.close > newCandle.open ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)'
-                  });
-                  
-                  onLatestChartInfoUpdate({ price: newCandle.close, volume: newCandle.volume });
-                  
-                  setHistoricalData(prev => { 
-                    const newData = [...prev];
-                    const lastBar = newData[newData.length -1];
-                    if(lastBar && lastBar.time === newCandle.time) {
-                      newData[newData.length -1] = newCandle;
-                    } else {
-                      newData.push(newCandle);
-                    }
-                    return newData;
-                  });
-                }
+              console.log(`Obteniendo datos FMP para ${finalSymbol} con intervalo ${apiTimeframe}`);
+              const fmpData = await getFmpData(
+                finalSymbol, 
+                apiTimeframe, 
+                1000
+              );
+              
+              if (!Array.isArray(fmpData) || fmpData.length === 0) {
+                throw new Error(`FMP no devolvió datos válidos para ${finalSymbol}`);
               }
-            } catch (e) { 
-              console.error('Error processing BingX binary message:', e); 
+              
+              // Usar el adaptador de FMP que tiene su propia validación
+              parsedData = adaptFMPDataToCandlestick(fmpData);
+            } catch (error) {
+              const fmpError = error as Error;
+              console.error(`Error al obtener datos de FMP: ${fmpError.message}`, fmpError);
+              throw new Error(`Error al obtener datos de FMP: ${fmpError.message}`);
             }
-          };
-          reader.readAsArrayBuffer(event.data);
-          return; 
-        } else {
-          const data = JSON.parse(event.data as string);
-          if (providerConf.type === 'binance' && data.e === 'kline') {
-            klineData = providerConf.parseKline(data);
-          } else { 
-            return; 
+          } 
+          // Para otros proveedores que usan API normal
+          else if (providerConf?.historicalApi) {
+            const apiUrl = providerConf.historicalApi(finalSymbol, apiTimeframe);
+            console.log(`Obteniendo datos de ${dataSource} para ${finalSymbol} desde ${apiUrl}`);
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+            
+            try {
+              const response = await fetch(apiUrl, {
+                signal: controller.signal,
+                headers: { 'Accept': 'application/json' }
+              });
+              clearTimeout(timeoutId);
+              
+              if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Error de la API [${response.status}]: ${errorText || response.statusText}`);
+              }
+              
+              const rawData = await response.json();
+              
+              if (!rawData) {
+                throw new Error(`${dataSource} devolvió una respuesta vacía para ${finalSymbol}`);
+              }
+              
+              // Usar el parser del proveedor
+              parsedData = providerConf.parseHistorical(rawData);
+            } catch (error) {
+              const fetchError = error as Error;
+              if (fetchError.name === 'AbortError') {
+                throw new Error(`La petición a ${dataSource} expiró después de 10s`);
+              }
+              throw fetchError;
+            }
+          } else {
+            throw new Error(`Proveedor ${dataSource} no soportado o mal configurado`);
           }
-        }
-        
-        if (klineData) {
-          candlestickSeriesRef.current?.update(klineData);
-          volumeSeriesRef.current?.update({ 
-            time: klineData.time, 
-            value: klineData.volume ?? 0, 
-            color: klineData.close > klineData.open ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)'
-          });
           
-          onLatestChartInfoUpdate({ price: klineData.close, volume: klineData.volume });
+          // Validación adicional de los datos
+          if (!Array.isArray(parsedData)) {
+            throw new Error(`${dataSource} devolvió un formato incorrecto para ${finalSymbol}`);
+          }
           
-          setHistoricalData(prev => { 
-            const newData = [...prev];
-            const lastBar = newData[newData.length -1];
-            if(lastBar && lastBar.time === klineData!.time) {
-              newData[newData.length -1] = klineData!;
-            } else {
-              newData.push(klineData!);
-            }
-            return newData;
-          });
+          if (parsedData.length === 0) {
+            throw new Error(`${dataSource} no devolvió datos para ${finalSymbol}. Verifica si el símbolo existe.`);
+          }
+          
+          // Verificar que hay al menos algunos datos válidos
+          const validDataPoints = parsedData.filter(item => (
+            item && 
+            typeof item.time === 'number' && 
+            !isNaN(item.time) &&
+            item.time > 0 &&
+            !isNaN(item.open) && 
+            !isNaN(item.high) && 
+            !isNaN(item.low) && 
+            !isNaN(item.close)
+          ));
+          
+          if (validDataPoints.length < parsedData.length * 0.5) {
+            console.warn(
+              `${dataSource} devolvió datos parcialmente válidos (${validDataPoints.length}/${parsedData.length}). ` +
+              `Se procesarán solo los puntos válidos.`
+            );
+          }
+          
+          if (validDataPoints.length === 0) {
+            throw new Error(
+              `${dataSource} devolvió datos, pero ninguno es válido para gráfico de velas. `+
+              `Verifica el formato o si tienes permisos para ese símbolo.`
+            );
+          }
+          
+          // Procesar datos sanitizados
+          processAndSetData(validDataPoints.length > 0 ? validDataPoints : parsedData);
+          setConnectionStatus('ok');
+        } catch (error) {
+          const err = error as Error;
+          console.error(`Error al obtener datos históricos: ${err.message}`, err);
+          // Fallback a un gráfico vacío en lugar de datos simulados para no confundir
+          processAndSetData([]);
+          setConnectionStatus('error');
+          // Informar al componente padre del error
+          onChartLoading(false);
         }
-      } catch (e) { 
-        console.error('Error processing WebSocket kline message:', e); 
-      }
-    };
-    
-    ws.onerror = (event: Event) => {
-      console.error(`${providerConf.name} WebSocket error event type:`, event.type);
-      console.error(`${providerConf.name} WebSocket error object:`, event);
-      setConnectionStatus('error');
-    };
-    
-    ws.onclose = (event: CloseEvent) => {
-      console.log(`${providerConf.name} WebSocket disconnected. Code: ${event.code}, Reason: "${event.reason}", Clean: ${event.wasClean}`);
-      setConnectionStatus('connecting');
-    };
-  };
-  
-  useEffect(() => {
-    if (providerConf) {
-      setupWebSocket();
+      };
+
+      fetchHistoricalData();
     }
-    
+
+    return () => {
+      if (chartRef.current) {
+        chartRef.current.remove();
+        chartRef.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      // Cleanup de referencias
+      candlestickSeriesRef.current = null;
+      volumeSeriesRef.current = null;
+      priceProjectionSeriesRef.current = null;
+      analysisMarkersRef.current = [];
+      maSeriesRefs.current.clear();
+    };
+  }, [dataSource, rawSymbol, rawTimeframe, theme, chartPaneBackgroundColor, providerOverride]); // staticData is NOT a dependency
+
+  // Effect for handling static data updates from the adapter
+  useEffect(() => {
+    if (staticData && candlestickSeriesRef.current) {
+      processAndSetData(staticData);
+      setConnectionStatus('ok');
+    }
+  }, [staticData, processAndSetData]);
+
+  // Effect for WebSocket connection
+  useEffect(() => {
+    if (staticData || !providerConf || !providerConf.wsKline) return;
+
+    if (wsRef.current) wsRef.current.close();
+
+    const ws = new WebSocket(providerConf.wsKline(formattedSymbol, apiTimeframe));
+    wsRef.current = ws;
+    ws.onopen = () => setConnectionStatus('ok');
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data as string);
+        if (providerConf.type === 'binance' && data.e === 'kline') {
+          const klineData = providerConf.parseKline(data);
+          candlestickSeriesRef.current?.update(klineData);
+          volumeSeriesRef.current?.update({ time: klineData.time, value: klineData.volume ?? 0, color: klineData.close > klineData.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)' });
+          onLatestInfo({ price: klineData.close, volume: klineData.volume });
+        }
+      } catch (e) { console.error('Error processing WebSocket kline message:', e); }
+    };
+    ws.onerror = () => setConnectionStatus('error');
+    ws.onclose = () => setConnectionStatus('connecting');
+
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
-      if (chartRef.current) { 
-        chartRef.current.remove(); 
-        chartRef.current = null; 
-      }
     };
-  }, [
-    dataSource, rawSymbol, rawTimeframe, 
-    theme, chartPaneBackgroundColor, 
-  ]);
+  }, [dataSource, formattedSymbol, apiTimeframe, staticData, providerConf, onLatestInfo]);
 
+  // Effect for Moving Averages
   useEffect(() => {
     if (!chartRef.current || historicalData.length === 0) return;
-    
-    maSeriesRefs.current.forEach(series => chartRef.current?.removeSeries(series));
-    maSeriesRefs.current = [];
 
-    movingAverages.forEach(maConfig => {
-      if (maConfig.visible && historicalData.length >= maConfig.period) {
-        const maData = maConfig.type === 'EMA'
-          ? calculateEMA(historicalData, maConfig.period)
-          : calculateMA(historicalData, maConfig.period);
-        
-        if (chartRef.current) {
-            const maSeries = chartRef.current.addLineSeries({
-            color: maConfig.color,
-            lineWidth: 1,
-            lastValueVisible: false,
-            priceLineVisible: false,
-            });
-            maSeries.setData(maData as LineData[]);
-            maSeriesRefs.current.push(maSeries);
-        }
+    const chart = chartRef.current;
+    const currentMaKeys = new Set(movingAverages.map(ma => `${ma.type}-${ma.period}`));
+
+    // Remove old MAs
+    maSeriesRefs.current.forEach((series, key) => {
+      if (!currentMaKeys.has(key)) {
+        chart.removeSeries(series);
+        maSeriesRefs.current.delete(key);
       }
     });
-  }, [movingAverages, historicalData]); // Re-run if MAs config or historical data changesrtRef.current) return;
 
-    // Clear previous analysis drawings
-    analysisPriceLinesRef.current.forEach(line => candlestickSeriesRef.current?.removePriceLine(line));
-    analysisPriceLinesRef.current = [];
-      candlestickSeriesRef.current.setMarkers(markers as SeriesMarker<UTCTimestamp>[]); // Clear markers
-    projectionSeriesRef.current?.setData([]); // Clear projection path
+    // Add/update MAs
+    movingAverages.forEach(ma => {
+      const key = `${ma.type}-${ma.period}`;
+      const calculator = ma.type === 'EMA' ? calculateEMA : calculateMA;
+      const maData = calculator(historicalData, ma.period);
 
-    if (analysisResult && showAiAnalysisDrawings && candlestickSeriesRef.current) {
-      const { puntos_clave_grafico, proyeccion_precio_visual, analisis_fibonacci } = analysisResult;
-      const currentSeries = candlestickSeriesRef.current;
-{{ ... }}
-            } else if (point.marker_shape === "arrowUp") {
-                markerColor = `rgba(76, 175, 80, ${generalMarkerOpacity})`; 
-            } else if (point.marker_shape === "arrowDown") {
-                 markerColor = `rgba(244, 67, 54, ${generalMarkerOpacity})`; 
-            }
-           const markers = trendLines.filter(line => line.type === 'marker').map(line => ({
-        time: line.startTime as UTCTimestamp,
-        position: line.startPrice > line.endPrice ? 'aboveBar' : 'belowBar',
-        color: line.color || '#2196F3',
-        shape: (line.markerShape || 'circle') as SeriesMarkerShape,
-        text: line.label || ''
-      }));      });
-        }
-      });
-      currentSeries.setMarkers(markers);
-      
-      // Draw Fibonacci levels
-      if (analisis_fibonacci) {
-        const { niveles_retroceso, niveles_extension } = analisis_fibonacci;
-        const fiboColors = theme === 'dark' ? THEME_COLORS.dark : THEME_COLORS.light;
-
-        const drawFiboLevels = (levels: FibonacciLevel[], fiboColor: string, prefix: string = "") => {
-          levels.forEach(level => {
-            fibPriceLines.push(candlestickSeriesRef.current.createPriceLine({
-          price: level.price,
-          color: fibColor,
-          lineWidth: level.lineWidth || 1,
-          lineStyle: level.lineStyle || LineStyle.Dashed,
-          title: `${level.label}: ${level.price.toFixed(2)}`,
-          axisLabelVisible: true,
-        }));      title: `${prefix}${level.label}`
-            });
-            analysisPriceLinesRef.current.push(line);
-          });
-        };
-        if (niveles_retroceso) drawFiboLevels(niveles_retroceso, fiboColors.fiboRetracement);
-{{ ... }}
+      if (maSeriesRefs.current.has(key)) {
+        maSeriesRefs.current.get(key)?.setData(maData);
+      } else {
+        const maSeries = chart.addLineSeries({ color: ma.color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+        maSeries.setData(maData);
+        maSeriesRefs.current.set(key, maSeries);
+      }
+    });
+  }, [movingAverages, historicalData]);
 
   return (
-    <div ref={chartContainerRef} className="w-full h-[400px] bg-white dark:bg-gray-900 rounded-lg shadow border-gray-200 dark:border-gray-700 overflow-hidden">
-      {connectionStatus === 'error' && <div className="absolute top-2 left-2 bg-red-500 text-white p-2 rounded text-xs z-10">Connection Error</div>}
-    </div>
-  );    {connectionStatus === 'error' && <div className="absolute top-2 left-2 bg-red-500 text-white p-2 rounded text-xs z-10">Connection Error</div>}
+    <div className="w-full h-full relative" ref={chartContainerRef}>
+      {connectionStatus !== 'ok' && (
+        <div className="absolute top-2 left-2 bg-gray-800 bg-opacity-70 text-white text-xs px-2 py-1 rounded">
+          {connectionStatus === 'connecting' ? 'Connecting...' : 'Connection Error'}
+        </div>
+      )}
     </div>
   );
-};
+}
 
-export default RealTimeTradingChart;
+// Renaming calculateMA to calculateSMA for clarity as it's a Simple Moving Average
+const calculateSMA = calculateMA;
+
+// Nueva función para obtener datos de Binance directamente (solo para pruebas, puede eliminarse después)
+async function fetchDataFromBinance() {
+  const symbol = 'ETHUSDT'; // Puedes hacerlo dinámico si es necesario
+  const interval = '15m';
+  const limit = 1000;
+  const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+  
+  console.log(`Obteniendo datos de Binance para ${symbol} desde ${url}`); // Modificado para usar la variable symbol
+
+  try {
+    const response = await fetch(url);
+
+    // Verificar el estado de la respuesta HTTP
+    if (!response.ok) {
+      console.error(`Error en la respuesta de la API: ${response.status} ${response.statusText}`);
+      // Intentar leer el cuerpo como texto para obtener más detalles del error
+      try {
+        const errorText = await response.text();
+        console.error('Cuerpo de la respuesta (error):', errorText);
+      } catch (textError) {
+        console.error('No se pudo leer el cuerpo de la respuesta de error:', textError);
+      }
+      // Aquí podrías manejar el error, por ejemplo, mostrando un mensaje al usuario o actualizando el estado
+      return null; // o lanzar un error para que sea capturado por un manejador de errores superior
+    }
+
+    // Intentar leer la respuesta como texto primero para depuración
+    const responseText = await response.text();
+    // console.log('Respuesta cruda de la API:', responseText); // Descomenta si necesitas ver la respuesta cruda siempre
+
+    // Ahora intentar parsear como JSON
+    try {
+      const data = JSON.parse(responseText);
+      // console.log('Datos de Binance parseados:', data); // Descomenta si necesitas ver los datos parseados
+      // ...procesar los datos...
+      // Por ejemplo, si 'miArray' se actualiza con estos datos:
+      // setMiArray(data); // Asumiendo que tienes una función setMiArray del estado de React
+      return data;
+    } catch (jsonError) {
+      console.error('Error al parsear JSON:', jsonError);
+      console.error('Texto que falló al parsear:', responseText); // Muestra el texto que causó el error
+      // Aquí manejas el error de parseo de JSON
+      return null; // o lanzar un error
+    }
+
+  } catch (networkError) {
+    console.error('Error de red o al hacer fetch:', networkError);
+    // Aquí manejas errores de red u otros errores del fetch
+    return null; // o lanzar un error
+  }
+}
+
+// Ejemplo de cómo podrías llamar a esta función y manejar los datos o errores
+// (esto dependerá de cómo esté estructurado tu componente React)
+// useEffect(() => {
+//   fetchDataFromBinance().then(data => {
+//     if (data) {
+//       // Aquí es donde probablemente actualizas el estado que usa 'miArray'
+//       // Por ejemplo: setChartData(data);
+//       console.log("Datos recibidos y procesados correctamente.");
+//     } else {
+//       console.log("No se pudieron obtener los datos de Binance.");
+//       // Podrías establecer un estado de error aquí para mostrarlo en la UI
+//     }
+//   }).catch(error => {
+//      console.error("Error en la cadena de promesas de fetchDataFromBinance:", error);
+//      // Manejo de errores si la promesa es rechazada
+//   });
+// }, []);
