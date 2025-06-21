@@ -5,20 +5,20 @@ import { mapTimeframeToApi } from '../constants';
 
 const PROVIDERS_CONFIG: Record<string, any> = {
     binance: {
-        historicalApi: (symbol: string, interval: string) => `/api/proxy?url=${encodeURIComponent(`https://fapi.binance.com/fapi/v1/klines?symbol=<span class="math-inline">\{symbol\}&interval\=</span>{interval}&limit=1000`)}`,
+        historicalApi: (symbol: string, interval: string) => '/api/proxy?url=' + encodeURIComponent('https://fapi.binance.com/fapi/v1/klines?symbol=' + symbol + '&interval=' + interval + '&limit=1000'),
         parseHistorical: (data: any) => {
             if (!Array.isArray(data)) {
-                console.error("[Frontend] La respuesta de Binance no es un array. Respuesta recibida:", data);
+                console.error("[Frontend] La respuesta de Binance no es un array. Respuesta:", data);
                 return [];
             }
             return data.map((k: any) => ({ time: k[0] / 1000, open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]) }));
         }
     },
     bingx: {
-        historicalApi: (symbol: string, interval: string) => `/api/proxy?url=${encodeURIComponent(`https://open-api.bingx.com/openApi/swap/v2/quote/klines?symbol=<span class="math-inline">\{symbol\}&interval\=</span>{interval}&limit=1000`)}`,
+        historicalApi: (symbol: string, interval: string) => '/api/proxy?url=' + encodeURIComponent('https://open-api.bingx.com/openApi/swap/v2/quote/klines?symbol=' + symbol + '&interval=' + interval + '&limit=1000'),
         parseHistorical: (res: any) => {
             if (!res?.data || !Array.isArray(res.data)) {
-                console.error("[Frontend] La respuesta de BingX no tiene el formato esperado. Respuesta recibida:", res);
+                console.error("[Frontend] La respuesta de BingX no tiene el formato esperado. Respuesta:", res);
                 return [];
             }
             return res.data.map((k: any) => ({ time: parseInt(k.time) / 1000, open: parseFloat(k.open), high: parseFloat(k.high), low: parseFloat(k.low), close: parseFloat(k.close), volume: parseFloat(k.volume) }));
@@ -60,10 +60,9 @@ interface RealTimeTradingChartProps {
     onLatestInfo: (info: { price: number | null; volume?: number | null }) => void;
     onChartLoading: (isLoading: boolean) => void;
     movingAverages: MovingAverageConfig[];
-    staticData?: CandlestickData<UTCTimestamp>[];
 }
 
-export default function RealTimeTradingChart({ dataSource, symbol, timeframe, onChartLoading, onLatestInfo, movingAverages, staticData }: RealTimeTradingChartProps) {
+export default function RealTimeTradingChart({ dataSource, symbol, timeframe, onChartLoading, onLatestInfo, movingAverages }: RealTimeTradingChartProps) {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -80,52 +79,41 @@ export default function RealTimeTradingChart({ dataSource, symbol, timeframe, on
         });
         chartRef.current = chart;
         candlestickSeriesRef.current = chart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350' });
-        return () => {
-            chart.remove();
-            chartRef.current = null;
-        };
+        return () => { chart.remove(); };
     }, []);
 
     useEffect(() => {
         const fetchData = async () => {
-            if (!symbol || !timeframe) return;
+            if (!symbol || !timeframe) {
+                setHistoricalData([]);
+                return;
+            };
             onChartLoading(true);
             const providerConf = PROVIDERS_CONFIG[dataSource];
+            
             if (!providerConf) {
-                console.error(`[Frontend] Proveedor no configurado en RealTimeTradingChart: ${dataSource}`);
+                console.warn(`[Frontend] Proveedor ${dataSource} no es nativo. Se mostrará un gráfico vacío.`);
+                setHistoricalData([]);
                 onChartLoading(false);
                 return;
             }
+
             try {
                 const apiUrl = providerConf.historicalApi(symbol, mapTimeframeToApi(timeframe));
-                console.log(`[Frontend] Intentando fetch a: ${apiUrl}`);
                 const response = await fetch(apiUrl);
-                
-                console.log(`[Frontend] Respuesta del proxy recibida. Status: ${response.status}`);
+                if (!response.ok) throw new Error(`Error de red: ${response.status} ${response.statusText}`);
                 const data = await response.json();
-                console.log(`[Frontend] Datos JSON del proxy:`, data);
-
-                if (!response.ok) {
-                    throw new Error(`El servidor devolvió un error: ${JSON.stringify(data)}`);
-                }
-
                 const parsedData = providerConf.parseHistorical(data).sort((a: any, b: any) => a.time - b.time);
                 setHistoricalData(parsedData);
             } catch (error) {
-                console.error(`[Frontend] Error en el bloque catch de fetchData:`, error);
+                console.error(`[Frontend] Error en fetchData para ${dataSource}:`, error);
                 setHistoricalData([]);
             } finally {
                 onChartLoading(false);
             }
         };
-
-        if (staticData) {
-            console.log("[Frontend] Usando datos estáticos.");
-            setHistoricalData(staticData);
-        } else {
-            fetchData();
-        }
-    }, [dataSource, symbol, timeframe, staticData, onChartLoading, onLatestInfo]);
+        fetchData();
+    }, [dataSource, symbol, timeframe, onChartLoading]);
 
     useEffect(() => {
         if (candlestickSeriesRef.current) {
@@ -142,7 +130,6 @@ export default function RealTimeTradingChart({ dataSource, symbol, timeframe, on
             maSeriesRefs.current.clear();
             return;
         };
-
         const currentMaIds = new Set(movingAverages.map(ma => ma.id));
         maSeriesRefs.current.forEach((series, id) => {
             if (!currentMaIds.has(id)) {
@@ -150,7 +137,6 @@ export default function RealTimeTradingChart({ dataSource, symbol, timeframe, on
                 maSeriesRefs.current.delete(id);
             }
         });
-
         movingAverages.forEach(maConfig => {
             if (!maConfig.visible) {
                 if (maSeriesRefs.current.has(maConfig.id)) {
@@ -159,21 +145,16 @@ export default function RealTimeTradingChart({ dataSource, symbol, timeframe, on
                 }
                 return;
             }
-
             const calculator = maConfig.type === 'EMA' ? calculateEMA : calculateMA;
             const maData = calculator(historicalData, maConfig.period);
-
             let maSeries = maSeriesRefs.current.get(maConfig.id);
             if (maSeries) {
                 maSeries.applyOptions({ color: maConfig.color });
                 maSeries.setData(maData);
             } else {
                 maSeries = chartRef.current!.addLineSeries({
-                    color: maConfig.color,
-                    lineWidth: 2,
-                    priceLineVisible: false,
-                    lastValueVisible: false,
-                    crosshairMarkerVisible: false,
+                    color: maConfig.color, lineWidth: 2, priceLineVisible: false,
+                    lastValueVisible: false, crosshairMarkerVisible: false,
                 });
                 maSeries.setData(maData);
                 maSeriesRefs.current.set(maConfig.id, maSeries);
