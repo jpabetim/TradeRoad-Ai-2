@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { DataSource, MarketType, MovingAverageConfig, AnalysisPoint, GeminiAnalysisResult } from './types';
+import { DataSource, MarketType, MovingAverageConfig, GeminiAnalysisResult } from './types';
 import ControlsPanel from './components/ControlsPanel';
 import RealTimeTradingChartAdapter from './components/RealTimeTradingChartAdapter';
 import AiQueryPanel from './components/AiQueryPanel';
@@ -36,7 +36,7 @@ const App: React.FC = () => {
   const [theme, setTheme] = useState<Theme>(() => getLocalStorageItem('traderoad_theme', 'dark'));
   const [movingAverages, setMovingAverages] = useState<MovingAverageConfig[]>(() => getLocalStorageItem('traderoad_movingAverages', initialMAs));
   const [isPanelVisible, setIsPanelVisible] = useState<boolean>(() => getLocalStorageItem('traderoad_isPanelVisible', true));
-
+  
   const [analysisResult, setAnalysisResult] = useState<GeminiAnalysisResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isChartLoading, setIsChartLoading] = useState<boolean>(true);
@@ -48,39 +48,45 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const fetchSymbols = async () => {
-      if (!dataSource) return;
-      try {
-        const response = await fetch(`/api/symbols?exchange=${dataSource}`);
-        if (!response.ok) throw new Error('No se pudieron cargar los símbolos');
-        const data = await response.json();
-        if (Array.isArray(data)) {
-          setAvailableSymbols(data);
-          if (!data.includes(actualSymbol)) {
-            const newSymbol = data[0] || '';
-            setActualSymbol(newSymbol);
-            setSymbolInput(newSymbol);
-          }
+        if (!dataSource) return;
+        try {
+            const response = await fetch(`/api/symbols?exchange=${dataSource}`);
+            if (!response.ok) throw new Error('No se pudieron cargar los símbolos');
+            const data = await response.json();
+            if (Array.isArray(data)) {
+                setAvailableSymbols(data);
+                if (!data.includes(actualSymbol)) {
+                    const newSymbol = data[0] || '';
+                    setActualSymbol(newSymbol);
+                    setSymbolInput(newSymbol);
+                }
+            }
+        } catch (error) {
+            console.error("Error al cargar símbolos:", error);
+            setAvailableSymbols([]);
         }
-      } catch (error) {
-        console.error("Error al cargar símbolos:", error);
-        setAvailableSymbols([]);
-      }
     };
     fetchSymbols();
   }, [dataSource]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      window.dispatchEvent(new Event('resize'));
-    }, 200);
+        window.dispatchEvent(new Event('resize'));
+    }, 200); 
     return () => clearTimeout(timer);
   }, [isPanelVisible]);
 
   const handleAnalyze = useCallback(async (isAuto: boolean) => {
     const userPrompt = prompt.trim();
-    if (!isAuto && !userPrompt) return;
-    if (isChartLoading || !latestChartInfo.price) return;
-
+    if (!isAuto && !userPrompt) {
+        setError("Por favor, introduce una pregunta para analizar.");
+        return;
+    }
+    if (isChartLoading || !latestChartInfo.price) {
+        setError("Espera a que los datos del gráfico carguen completamente.");
+        return;
+    }
+    
     setIsLoading(true);
     setError(null);
     try {
@@ -97,56 +103,82 @@ const App: React.FC = () => {
   }, [actualSymbol, timeframe, isChartLoading, latestChartInfo, prompt]);
 
   const chartAdapterProps = useMemo(() => ({
-    dataSource, symbol: actualSymbol, timeframe, theme,
+    dataSource, 
+    symbol: actualSymbol, 
+    timeframe, 
+    theme,
     movingAverages,
-    onLatestInfo: setLatestChartInfo, onChartLoading: setIsChartLoading,
+    onLatestInfo: setLatestChartInfo, 
+    onChartLoading: setIsChartLoading,
     isPanelVisible,
   }), [dataSource, actualSymbol, timeframe, theme, movingAverages, isPanelVisible]);
 
   return (
     <div className={`flex flex-col h-screen antialiased bg-slate-900 text-slate-100`}>
-      <header className={`p-3 shadow-md flex items-center gap-x-4 flex-wrap bg-slate-800`}>
-        <h1 className="text-xl font-bold text-sky-500">TradeRoad AI</h1>
-        <div className="flex-grow min-w-[300px]"><AiQueryPanel prompt={prompt} onPromptChange={setPrompt} onAnalyzeClick={() => handleAnalyze(false)} onAutoAnalyzeClick={() => handleAnalyze(true)} isLoading={isLoading} theme={theme} /></div>
-        <div className="flex items-center gap-2">
-          <Button onClick={() => setShowIndicators(p => !p)} variant="outline" size="sm" className="bg-sky-800 text-sky-200 border-sky-700 hover:bg-sky-700">
-            Indicadores {showIndicators ? '▲' : '▼'}
-          </Button>
-          <Button onClick={() => setIsPanelVisible(!isPanelVisible)} variant="outline" size="sm" className="bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600">
-            {isPanelVisible ? 'Ocultar Panel' : 'Mostrar Panel'}
-          </Button>
+      <header className="p-3 shadow-md bg-slate-800">
+        <div className="flex items-center justify-between gap-x-4 flex-wrap gap-y-2">
+          <div className="flex items-center gap-x-4 flex-grow min-w-[400px]">
+            <h1 className="text-xl font-bold text-sky-500 whitespace-nowrap">TradeRoad AI</h1>
+            <div className="flex-grow">
+              <AiQueryPanel 
+                prompt={prompt} 
+                onPromptChange={setPrompt} 
+                onAnalyzeClick={() => handleAnalyze(false)} 
+                onAutoAnalyzeClick={() => handleAnalyze(true)} 
+                isLoading={isLoading} 
+                theme={theme} 
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button 
+              onClick={() => setShowIndicators(p => !p)} 
+              variant="outline" 
+              size="sm" 
+              className="bg-sky-800 text-sky-200 border-sky-700 hover:bg-sky-700"
+            >
+              Indicadores {showIndicators ? '▲' : '▼'}
+            </Button>
+            <Button 
+              onClick={() => setIsPanelVisible(!isPanelVisible)} 
+              variant="outline" 
+              size="sm" 
+              className="bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600"
+            >
+              {isPanelVisible ? 'Ocultar Panel' : 'Mostrar Panel'}
+            </Button>
+          </div>
         </div>
       </header>
 
       {showIndicators && (
         <div className="absolute top-20 right-4 z-50 p-4 bg-slate-800 rounded-lg shadow-lg border border-slate-700">
-          <MovingAverageControls movingAverages={movingAverages} setMovingAverages={setMovingAverages} />
+            <MovingAverageControls movingAverages={movingAverages} setMovingAverages={setMovingAverages} />
         </div>
       )}
 
       <main className="flex-grow flex flex-row overflow-hidden">
         {isPanelVisible && (
-          <aside className="w-full md:w-1/3 md:max-w-sm lg:max-w-md flex flex-col h-1/2 md:h-full">
-            <div className="p-4 overflow-y-auto space-y-4">
-              <ControlsPanel
-                dataSource={dataSource} onDataSourceChange={setDataSource}
-                symbolInput={symbolInput} onSymbolInputChange={setSymbolInput}
-                onSymbolSubmit={() => setActualSymbol(symbolInput.toUpperCase())}
-                timeframe={timeframe} onTimeframeChange={setTimeframe}
-                theme={theme}
-                actualSymbol={actualSymbol} setActualSymbol={setActualSymbol}
-                availableSymbols={availableSymbols}
-              />
-              <AutomatedAnalysisDisplay analysisResult={analysisResult} error={error} isLoading={isLoading} />
-            </div>
-          </aside>
+            <aside className="w-full md:w-1/3 md:max-w-sm lg:max-w-md flex flex-col h-1/2 md:h-full">
+              <div className="p-4 overflow-y-auto space-y-4">
+                  <ControlsPanel
+                      dataSource={dataSource} onDataSourceChange={setDataSource}
+                      symbolInput={symbolInput} onSymbolInputChange={setSymbolInput}
+                      onSymbolSubmit={() => setActualSymbol(symbolInput.toUpperCase())}
+                      timeframe={timeframe} onTimeframeChange={setTimeframe}
+                      theme={theme}
+                      actualSymbol={actualSymbol} setActualSymbol={setActualSymbol}
+                      availableSymbols={availableSymbols}
+                  />
+                  <AutomatedAnalysisDisplay analysisResult={analysisResult} error={error} isLoading={isLoading} />
+              </div>
+            </aside>
         )}
         <div className="flex-grow flex flex-col min-h-0">
-          <RealTimeTradingChartAdapter {...chartAdapterProps} />
+            <RealTimeTradingChartAdapter {...chartAdapterProps} />
         </div>
       </main>
     </div>
   );
 };
 export default App;
-// --- FIN: App.tsx ---

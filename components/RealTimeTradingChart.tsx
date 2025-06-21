@@ -5,20 +5,20 @@ import { mapTimeframeToApi } from '../constants';
 
 const PROVIDERS_CONFIG: Record<string, any> = {
     binance: {
-        historicalApi: (symbol: string, interval: string) => `/api/proxy?url=${encodeURIComponent(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=1000`)}`,
+        historicalApi: (symbol: string, interval: string) => `/api/proxy?url=${encodeURIComponent(`https://fapi.binance.com/fapi/v1/klines?symbol=<span class="math-inline">\{symbol\}&interval\=</span>{interval}&limit=1000`)}`,
         parseHistorical: (data: any) => {
             if (!Array.isArray(data)) {
-                console.error("[ChartComponent] La respuesta de Binance no es un array. Respuesta recibida:", data);
+                console.error("[Frontend] La respuesta de Binance no es un array. Respuesta recibida:", data);
                 return [];
             }
             return data.map((k: any) => ({ time: k[0] / 1000, open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]) }));
         }
     },
     bingx: {
-        historicalApi: (symbol: string, interval: string) => `/api/proxy?url=${encodeURIComponent(`https://open-api.bingx.com/openApi/swap/v2/quote/klines?symbol=${symbol}&interval=${interval}&limit=1000`)}`,
+        historicalApi: (symbol: string, interval: string) => `/api/proxy?url=${encodeURIComponent(`https://open-api.bingx.com/openApi/swap/v2/quote/klines?symbol=<span class="math-inline">\{symbol\}&interval\=</span>{interval}&limit=1000`)}`,
         parseHistorical: (res: any) => {
             if (!res?.data || !Array.isArray(res.data)) {
-                console.error("[ChartComponent] La respuesta de BingX no tiene el formato esperado. Respuesta recibida:", res);
+                console.error("[Frontend] La respuesta de BingX no tiene el formato esperado. Respuesta recibida:", res);
                 return [];
             }
             return res.data.map((k: any) => ({ time: parseInt(k.time) / 1000, open: parseFloat(k.open), high: parseFloat(k.high), low: parseFloat(k.low), close: parseFloat(k.close), volume: parseFloat(k.volume) }));
@@ -92,23 +92,27 @@ export default function RealTimeTradingChart({ dataSource, symbol, timeframe, on
             onChartLoading(true);
             const providerConf = PROVIDERS_CONFIG[dataSource];
             if (!providerConf) {
-                console.error(`[ChartComponent] Proveedor no configurado: ${dataSource}`);
+                console.error(`[Frontend] Proveedor no configurado en RealTimeTradingChart: ${dataSource}`);
                 onChartLoading(false);
                 return;
             }
             try {
                 const apiUrl = providerConf.historicalApi(symbol, mapTimeframeToApi(timeframe));
+                console.log(`[Frontend] Intentando fetch a: ${apiUrl}`);
                 const response = await fetch(apiUrl);
-                if (!response.ok) {
-                    const errorBody = await response.json().catch(() => response.text());
-                    throw new Error(`Error de red: ${response.status} ${response.statusText} - ${JSON.stringify(errorBody)}`);
-                }
+                
+                console.log(`[Frontend] Respuesta del proxy recibida. Status: ${response.status}`);
                 const data = await response.json();
-                console.log(`[ChartComponent] Respuesta CRUDA de ${dataSource}:`, data);
+                console.log(`[Frontend] Datos JSON del proxy:`, data);
+
+                if (!response.ok) {
+                    throw new Error(`El servidor devolvió un error: ${JSON.stringify(data)}`);
+                }
+
                 const parsedData = providerConf.parseHistorical(data).sort((a: any, b: any) => a.time - b.time);
                 setHistoricalData(parsedData);
             } catch (error) {
-                console.error(`[ChartComponent] Error en el bloque catch de fetchData para ${dataSource}:`, error);
+                console.error(`[Frontend] Error en el bloque catch de fetchData:`, error);
                 setHistoricalData([]);
             } finally {
                 onChartLoading(false);
@@ -116,6 +120,7 @@ export default function RealTimeTradingChart({ dataSource, symbol, timeframe, on
         };
 
         if (staticData) {
+            console.log("[Frontend] Usando datos estáticos.");
             setHistoricalData(staticData);
         } else {
             fetchData();
@@ -133,14 +138,12 @@ export default function RealTimeTradingChart({ dataSource, symbol, timeframe, on
 
     useEffect(() => {
         if (!chartRef.current || !historicalData || historicalData.length === 0) {
-            // Limpiar MAs si no hay datos
             maSeriesRefs.current.forEach(series => chartRef.current?.removeSeries(series));
             maSeriesRefs.current.clear();
             return;
         };
 
         const currentMaIds = new Set(movingAverages.map(ma => ma.id));
-
         maSeriesRefs.current.forEach((series, id) => {
             if (!currentMaIds.has(id)) {
                 chartRef.current?.removeSeries(series);
@@ -180,4 +183,3 @@ export default function RealTimeTradingChart({ dataSource, symbol, timeframe, on
 
     return <div className="w-full h-full" ref={chartContainerRef} />;
 }
-// --- FIN: RealTimeTradingChart.tsx ---
