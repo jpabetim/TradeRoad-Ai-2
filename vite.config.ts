@@ -1,23 +1,22 @@
-// vite.config.ts
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Forma moderna y segura de obtener la ruta del directorio actual
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 export default defineConfig({
+  // --- LÍNEA CLAVE AÑADIDA ---
+  // Le decimos a Vite explícitamente que la raíz del proyecto es el directorio actual.
+  // Esto fuerza a Vite a buscar el index.html aquí y resuelve problemas de caché.
+  root: process.cwd(),
+
   plugins: [react()],
+  
   resolve: {
     alias: {
-      // --- SOLUCIÓN PARA TU ESTRUCTURA ---
-      // Apuntamos el alias '@' al directorio raíz del proyecto ('.')
-      // porque tus carpetas 'components' y 'services' están ahí.
-      '@': path.resolve(__dirname, '.'),
+      // Ajustamos el alias para que sea robusto
+      '@': path.resolve(process.cwd()),
     },
   },
+
   server: {
     port: 3100,
     proxy: {
@@ -27,7 +26,8 @@ export default defineConfig({
       },
     },
   },
+  
   build: {
-    sourcemap: true, // Habilita source maps para producción
+    sourcemap: true,
   },
 });

@@ -3,7 +3,8 @@ import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
 
 // Importar CSS correctamente
-import './index.css'; // Importamos el archivo index.css en la raíz
+// --- LÍNEA MODIFICADA: Se ha añadido una barra '/' al principio ---
+import '/index.css'; 
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

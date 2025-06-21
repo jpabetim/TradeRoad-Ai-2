@@ -12,8 +12,9 @@ export default async function handler(req: Request, res: Response) {
       'open-api.bingx.com',
       'api.binance.com',
       'fapi.binance.com',
-      'api.example.com', // Para quodd (ajustar al dominio real posteriormente)
-      'sandbox.iexapis.com', // Para pruebas con APIs alternativas como IEX Cloud
+      'financialmodelingprep.com', // <--- AÑADE ESTA LÍNEA
+      'api.example.com', 
+      'sandbox.iexapis.com',
       'cloud.iexapis.com',
       'finnhub.io',
       'data.alpaca.markets',
